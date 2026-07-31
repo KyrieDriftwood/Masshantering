@@ -1007,6 +1007,7 @@
     const bergkvalitetGpkgManifestPath = "bergkvalitet/bergkvalitet_parts/bergkvalitet.gpkg.manifest.json";
     const bergkvalitetTableName = "bergkvalitet_vag";
     const rawRepoBase = "https://raw.githubusercontent.com/KyrieDriftwood/Masshantering/main/";
+    const chunkFetchConcurrency = 4;
     const maxFeatures = 32000;
     const maxBergkvalitetPoints = 3500;
     const queryPaddingFactor = 0.22;
@@ -3400,7 +3401,7 @@
       return fromSite === fromRawRepo ? [fromSite] : [fromSite, fromRawRepo];
     }
 
-    async function fetchWithFallback(assetPath, missingLabel, options = { cache: "no-store" }) {
+    async function fetchWithFallback(assetPath, missingLabel, options = { cache: "default" }) {
       let lastError = null;
       for (const url of buildAssetCandidateUrls(assetPath)) {
         try {
@@ -3416,7 +3417,7 @@
       throw new Error(`Kunde inte lasa ${missingLabel}.` + (lastError ? ` (${String(lastError)})` : ""));
     }
 
-    async function fetchChunkedBinary(manifestPath, missingLabel) {
+    async function fetchChunkedBinary(manifestPath, missingLabel, onProgress = null) {
       const { response: manifestResponse, url: resolvedManifestUrl } = await fetchWithFallback(
         manifestPath,
         `${missingLabel} manifest`
@@ -3435,22 +3436,61 @@
         throw new Error(`Ogiltig totalstorlek i manifest for ${missingLabel}.`);
       }
 
-      const merged = new Uint8Array(totalSize);
-      let offset = 0;
+      const partBuffers = new Array(parts.length);
+      let nextIndex = 0;
+      let loadedParts = 0;
+      let loadedBytes = 0;
 
-      for (const part of parts) {
+      const notifyProgress = () => {
+        if (typeof onProgress === "function") {
+          onProgress({
+            loadedParts,
+            totalParts: parts.length,
+            loadedBytes,
+            totalBytes: totalSize
+          });
+        }
+      };
+
+      const loadPartAtIndex = async (index) => {
+        const part = parts[index];
         const partFile = String(part?.file || "").trim();
         if (!partFile) {
           throw new Error(`Manifestdel saknar filnamn for ${missingLabel}.`);
         }
 
         const partUrl = new URL(partFile, resolvedManifestUrl).toString();
-        const res = await fetch(partUrl, { cache: "no-store" });
+        const res = await fetch(partUrl, { cache: "default" });
         if (!res.ok) {
           throw new Error(`Kunde inte lasa chunk ${partFile} for ${missingLabel}.`);
         }
 
         const bytes = new Uint8Array(await res.arrayBuffer());
+        partBuffers[index] = bytes;
+        loadedParts += 1;
+        loadedBytes += bytes.length;
+        notifyProgress();
+      };
+
+      const workerCount = Math.max(1, Math.min(chunkFetchConcurrency, parts.length));
+      const workers = Array.from({ length: workerCount }, async () => {
+        while (true) {
+          const index = nextIndex;
+          nextIndex += 1;
+          if (index >= parts.length) {
+            return;
+          }
+          await loadPartAtIndex(index);
+        }
+      });
+      await Promise.all(workers);
+
+      const merged = new Uint8Array(totalSize);
+      let offset = 0;
+      for (const bytes of partBuffers) {
+        if (!(bytes instanceof Uint8Array)) {
+          throw new Error(`Ofullstandig chunk-laddning for ${missingLabel}.`);
+        }
         merged.set(bytes, offset);
         offset += bytes.length;
       }
@@ -3474,7 +3514,11 @@
         window.GeoPackage.setSqljsWasmLocateFile((file) => "https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@4.2.8/dist/" + file);
       }
 
-      gpkgOpenPromise = fetchChunkedBinary(gpkgManifestPath, "berggrund GPKG")
+      gpkgOpenPromise = fetchChunkedBinary(gpkgManifestPath, "berggrund GPKG", (progress) => {
+        const mbLoaded = Math.round(progress.loadedBytes / (1024 * 1024));
+        const mbTotal = Math.round(progress.totalBytes / (1024 * 1024));
+        setStatus(`Laddar berggrund GPKG: del ${progress.loadedParts}/${progress.totalParts} (${mbLoaded}/${mbTotal} MB)`);
+      })
         .then((bytes) => {
           const openFn = window.GeoPackage.open || window.GeoPackage.GeoPackageAPI?.open;
           if (!openFn) {
@@ -3734,7 +3778,14 @@
         throw new Error("GeoPackage-biblioteket kunde inte laddas.");
       }
 
-      bergkvalitetGpkgOpenPromise = fetchChunkedBinary(bergkvalitetGpkgManifestPath, "bergkvalitet GPKG")
+      bergkvalitetGpkgOpenPromise = fetchChunkedBinary(bergkvalitetGpkgManifestPath, "bergkvalitet GPKG", (progress) => {
+        if (progress.totalParts <= 1) {
+          return;
+        }
+        const mbLoaded = Math.round(progress.loadedBytes / (1024 * 1024));
+        const mbTotal = Math.round(progress.totalBytes / (1024 * 1024));
+        setStatus(`Laddar bergkvalitet GPKG: del ${progress.loadedParts}/${progress.totalParts} (${mbLoaded}/${mbTotal} MB)`);
+      })
         .then((bytes) => {
           const openFn = window.GeoPackage.open || window.GeoPackage.GeoPackageAPI?.open;
           if (!openFn) {
@@ -4035,11 +4086,12 @@
           const elapsedMs = Math.round(performance.now() - refreshStartedAt);
           setStatus(`Geologisk enhet yta (LOD ${profile.level}): ${countRenderableFeatures(thinned)} objekt${subset.truncated ? " (med urval)" : ""}${usedGeoCache ? " (cache)" : ""}. ${elapsedMs} ms.`);
         }
-      } catch (_error) {
+      } catch (error) {
         removeActiveLayer();
         removeBergkvalitetPointLayer();
         clearUnitInfo("Kunde inte lasa geologisk enhet just nu.");
-        setStatus("Kunde inte ladda geologisk enhet yta just nu.");
+        const msg = String(error?.message || "").trim();
+        setStatus(msg ? `Kunde inte ladda geologisk enhet yta: ${msg}` : "Kunde inte ladda geologisk enhet yta just nu.");
       }
     }
 
