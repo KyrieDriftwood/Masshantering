@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Provberggrund - Exempel",
+        "typ": "Bergart",
+        "lith": "Granitoid"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [18.00, 59.30],
+            [18.50, 59.30],
+            [18.50, 59.60],
+            [18.00, 59.60],
+            [18.00, 59.30]
+          ]
+        ]
+      }
+    }
+  ]
+}

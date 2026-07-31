@@ -12,10 +12,5 @@ Thumbs.db
 *.log
 *.tmp
 
-# Large/local geodata folders (keep out of first remote deploy)
-berggrund50k-250k/
-bergkvalitet/
-sgu/
-
 # Optional local scratch files
 *.bak

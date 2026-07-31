@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "source_file": "berggrund50k_250k.gpkg",
+  "source_size": 1489223680,
+  "source_sha256": "df22a75a3c817ceada3ae70c678e00e8bb7cff2e4d3531d5e903aa8777475a50",
+  "chunk_size_bytes": 52428800,
+  "chunk_size_mb": 50.0,
+  "parts": [
+    {
+      "index": 1,
+      "file": "berggrund50k_250k.gpkg.part001",
+      "size": 52428800,
+      "sha256": "781c75da45c3b0049a7261bb42c2a2b7dd44891d9e71cc552430c018da8c3d60"
+    },
+    {
+      "index": 2,
+      "file": "berggrund50k_250k.gpkg.part002",
+      "size": 52428800,
+      "sha256": "095351a80c497f671fa6ac00c1bb3a98f8c14cd24687bcdf4fceca9201b7243a"
+    },
+    {
+      "index": 3,
+      "file": "berggrund50k_250k.gpkg.part003",
+      "size": 52428800,
+      "sha256": "6dc630e71aae358d15fefd5ad7cf6f7363c3616e011e7c6c18099ff9f5aa9a21"
+    },
+    {
+      "index": 4,
+      "file": "berggrund50k_250k.gpkg.part004",
+      "size": 52428800,
+      "sha256": "3cfe2fb0f3d7cd7fc7e773c6a27848012f6e37b8faee8acd602461ddb4193cd8"
+    },
+    {
+      "index": 5,
+      "file": "berggrund50k_250k.gpkg.part005",
+      "size": 52428800,
+      "sha256": "a0aa49e69007b934ba4c387337d191ed86c1ab8419955c60d0a24c7abd4f502b"
+    },
+    {
+      "index": 6,
+      "file": "berggrund50k_250k.gpkg.part006",
+      "size": 52428800,
+      "sha256": "5dbe93b99b7d3278f01448347e8c43cb5aed13b6b3362b3dd7ceca3e4447d76d"
+    },
+    {
+      "index": 7,
+      "file": "berggrund50k_250k.gpkg.part007",
+      "size": 52428800,
+      "sha256": "6ecc2248c170439952ebcd7515c1a96f94fe290fea31e4e17e1d4d0c8d5da8b0"
+    },
+    {
+      "index": 8,
+      "file": "berggrund50k_250k.gpkg.part008",
+      "size": 52428800,
+      "sha256": "32abb64249d67ca1f827ae26ce461a790561c5faea7400739161b470cb137558"
+    },
+    {
+      "index": 9,
+      "file": "berggrund50k_250k.gpkg.part009",
+      "size": 52428800,
+      "sha256": "e7a868ab863e701bc6b1dd0cfa67a833cf81fa9f47e816c8b3eaf3b8e0681994"
+    },
+    {
+      "index": 10,
+      "file": "berggrund50k_250k.gpkg.part010",
+      "size": 52428800,
+      "sha256": "b6aba2054490b8346615071958c9204d070a2d665c7586e35e202b1f4f4b793a"
+    },
+    {
+      "index": 11,
+      "file": "berggrund50k_250k.gpkg.part011",
+      "size": 52428800,
+      "sha256": "607994e11bef3364572f047dbcb1e1778a07fedf425553582fa508e5f48473b9"
+    },
+    {
+      "index": 12,
+      "file": "berggrund50k_250k.gpkg.part012",
+      "size": 52428800,
+      "sha256": "fe330b3c4649d757edd99dd833a91814174950b62ae81530159d5e685455cd54"
+    },
+    {
+      "index": 13,
+      "file": "berggrund50k_250k.gpkg.part013",
+      "size": 52428800,
+      "sha256": "f3f0e939bb0fe2d98515ad4dad169b4d0024fee3adc4c2fb27f490a418a38939"
+    },
+    {
+      "index": 14,
+      "file": "berggrund50k_250k.gpkg.part014",
+      "size": 52428800,
+      "sha256": "5d79507a3b52258f513dd618af253cb70a2c8b61025fd5f3a9d102b1105292ec"
+    },
+    {
+      "index": 15,
+      "file": "berggrund50k_250k.gpkg.part015",
+      "size": 52428800,
+      "sha256": "b4a0d2603c6aaf1ce184da9213d97905c3c4606840d6be75532c678d6b7afa3e"
+    },
+    {
+      "index": 16,
+      "file": "berggrund50k_250k.gpkg.part016",
+      "size": 52428800,
+      "sha256": "be8ca7983f2d81f2f2d565da75537b77fa4672128faa7fc6fed00a8bccc68ae9"
+    },
+    {
+      "index": 17,
+      "file": "berggrund50k_250k.gpkg.part017",
+      "size": 52428800,
+      "sha256": "e3d284773ba50e7a792f7bd8ed58a061e851bddc56a6fd78de3e280b981af272"
+    },
+    {
+      "index": 18,
+      "file": "berggrund50k_250k.gpkg.part018",
+      "size": 52428800,
+      "sha256": "a3661cbd1fde56f35da98e42aad05be9be3c1860996bae52c035c45d4d265650"
+    },
+    {
+      "index": 19,
+      "file": "berggrund50k_250k.gpkg.part019",
+      "size": 52428800,
+      "sha256": "efabeb6ea2a21daf5394614c38bcb9a21959d8326c6794d7bc5923f81f569f22"
+    },
+    {
+      "index": 20,
+      "file": "berggrund50k_250k.gpkg.part020",
+      "size": 52428800,
+      "sha256": "81251e079c447ec9e156edf205b4ca677c2d4e6a424d754d2714c435d47a36d0"
+    },
+    {
+      "index": 21,
+      "file": "berggrund50k_250k.gpkg.part021",
+      "size": 52428800,
+      "sha256": "c7dd58a04ff6558ea84acda0e034a11b21ae549d31f1dae34d757f41d4993cbb"
+    },
+    {
+      "index": 22,
+      "file": "berggrund50k_250k.gpkg.part022",
+      "size": 52428800,
+      "sha256": "06b09a9beb9565b30a73bda4b9be45f6962921ce44d1b70a1c4fdd1a6281456d"
+    },
+    {
+      "index": 23,
+      "file": "berggrund50k_250k.gpkg.part023",
+      "size": 52428800,
+      "sha256": "9d09e22241b0b7abed7c9579883b015c8c30bfe5453b13923f1fedbb2a92f3ba"
+    },
+    {
+      "index": 24,
+      "file": "berggrund50k_250k.gpkg.part024",
+      "size": 52428800,
+      "sha256": "44e28cbd743a5201c5bbed6bf66f29e03d435357d0740f8baea380d08563aff4"
+    },
+    {
+      "index": 25,
+      "file": "berggrund50k_250k.gpkg.part025",
+      "size": 52428800,
+      "sha256": "d425af2137a7d410965323020b865ae335b8ad1a92c7a81b401089fecaba34d2"
+    },
+    {
+      "index": 26,
+      "file": "berggrund50k_250k.gpkg.part026",
+      "size": 52428800,
+      "sha256": "fd6c92b6171b98798fed3b6609eb3208cd854418ac48eabd44205dc757109158"
+    },
+    {
+      "index": 27,
+      "file": "berggrund50k_250k.gpkg.part027",
+      "size": 52428800,
+      "sha256": "5bb41499f07049f1a346873daf7c244dd942429b49617f269457223f73debcb6"
+    },
+    {
+      "index": 28,
+      "file": "berggrund50k_250k.gpkg.part028",
+      "size": 52428800,
+      "sha256": "44d60ecd9a8edbea4ddc510ba1e021f31d37e52e79e6c562e0438c363834e3e3"
+    },
+    {
+      "index": 29,
+      "file": "berggrund50k_250k.gpkg.part029",
+      "size": 21217280,
+      "sha256": "d3d4e2a3ec1ee82b511770316b332f276ff610bc0d1d5b8ecc2f0b9937cf9738"
+    }
+  ]
+}

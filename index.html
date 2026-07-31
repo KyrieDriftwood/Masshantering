@@ -1002,9 +1002,9 @@
 
   <script>
     const qlrPath = "berggrund50k-250k/berggrund50k_250k.qlr";
-    const gpkgPath = "berggrund50k-250k/berggrund50k_250k.gpkg";
+    const gpkgManifestPath = "berggrund50k-250k/berggrund50k_250k_parts/berggrund50k_250k.gpkg.manifest.json";
     const tableName = "geologisk_enhet_yta";
-    const bergkvalitetGpkgPath = "bergkvalitet/bergkvalitet.gpkg";
+    const bergkvalitetGpkgManifestPath = "bergkvalitet/bergkvalitet_parts/bergkvalitet.gpkg.manifest.json";
     const bergkvalitetTableName = "bergkvalitet_vag";
     const maxFeatures = 32000;
     const maxBergkvalitetPoints = 3500;
@@ -1085,6 +1085,99 @@
         iconSize: [size, size],
         iconAnchor: [Math.round(size / 2), Math.round(size / 2)]
       });
+    }
+
+    function isFiniteLatLng(lat, lon) {
+      return Number.isFinite(lat)
+        && Number.isFinite(lon)
+        && Math.abs(lat) <= 90
+        && Math.abs(lon) <= 180;
+    }
+
+    function extractIpGeoLatLng(payload) {
+      if (!payload || typeof payload !== "object") {
+        return null;
+      }
+
+      const ipInfoLoc = String(payload.loc || "").trim();
+      if (ipInfoLoc.includes(",")) {
+        const parts = ipInfoLoc.split(",");
+        const lat = Number(parts[0]);
+        const lon = Number(parts[1]);
+        if (isFiniteLatLng(lat, lon)) {
+          return { lat, lon };
+        }
+      }
+
+      const candidates = [
+        { lat: payload.latitude, lon: payload.longitude },
+        { lat: payload.lat, lon: payload.lon },
+        { lat: payload.lat, lon: payload.lng },
+        { lat: payload.location?.latitude, lon: payload.location?.longitude }
+      ];
+
+      for (const c of candidates) {
+        const lat = Number(c?.lat);
+        const lon = Number(c?.lon);
+        if (isFiniteLatLng(lat, lon)) {
+          return { lat, lon };
+        }
+      }
+
+      return null;
+    }
+
+    async function detectIpLocation() {
+      const providers = [
+        "https://ipinfo.io/json",
+        "https://ipwho.is/"
+      ];
+
+      for (const providerUrl of providers) {
+        try {
+          const response = await fetch(providerUrl, { cache: "no-store" });
+          if (!response.ok) {
+            continue;
+          }
+          const payload = await response.json();
+          const latLng = extractIpGeoLatLng(payload);
+          if (latLng) {
+            return latLng;
+          }
+        } catch (_err) {
+          // Try next provider.
+        }
+      }
+
+      return null;
+    }
+
+    async function detectBestStartLocation() {
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              timeout: 4500,
+              maximumAge: 600000
+            });
+          });
+          const lat = Number(pos?.coords?.latitude);
+          const lon = Number(pos?.coords?.longitude);
+          if (isFiniteLatLng(lat, lon)) {
+            return { lat, lon, source: "browser" };
+          }
+        } catch (_err) {
+          // Fall back to IP-based lookup.
+        }
+      }
+
+      const ipLocation = await detectIpLocation();
+      if (ipLocation) {
+        return { ...ipLocation, source: "ip" };
+      }
+
+      return null;
     }
 
     function parseCoordNumber(value) {
@@ -1216,6 +1309,9 @@
     const dProvRows = [];
     const dProvLockedByRow = [];
     const qlrStyleBySymbolValue = new Map();
+    const geoSubsetCache = new Map();
+    const bqSubsetCache = new Map();
+    const maxSubsetCacheEntries = 24;
 
     const {
       PROV_COLUMNS,
@@ -2417,17 +2513,10 @@
       renderProvComposer();
     }
 
-    const RENDER_INTERVALS = [
-      { level: 1, minSpanKm: 2600, limit: 800, simplify: 14, stride: 12, padding: 0.05, coarseStroke: true },
-      { level: 2, minSpanKm: 2000, limit: 1200, simplify: 13, stride: 10, padding: 0.06, coarseStroke: true },
-      { level: 3, minSpanKm: 1500, limit: 1700, simplify: 12, stride: 8, padding: 0.07, coarseStroke: true },
-      { level: 4, minSpanKm: 1100, limit: 2400, simplify: 11, stride: 6, padding: 0.08, coarseStroke: true },
-      { level: 5, minSpanKm: 800, limit: 3400, simplify: 10, stride: 5, padding: 0.10, coarseStroke: true },
-      { level: 6, minSpanKm: 550, limit: 4800, simplify: 8, stride: 4, padding: 0.12, coarseStroke: true },
-      { level: 7, minSpanKm: 350, limit: 7000, simplify: 7, stride: 3, padding: 0.14, coarseStroke: false },
-      { level: 8, minSpanKm: 200, limit: 9800, simplify: 5, stride: 2, padding: 0.17, coarseStroke: false },
-      { level: 9, minSpanKm: 90, limit: 14000, simplify: 3, stride: 1, padding: 0.20, coarseStroke: false },
-      { level: 10, minSpanKm: 0, limit: 21000, simplify: 2, stride: 1, padding: 0.24, coarseStroke: false }
+    const LOD_BANDS = [
+      { name: "overview", level: 1, minSpanKm: 900, limit: 2600, simplify: 3, stride: 1, padding: 0.08, coarseStroke: true },
+      { name: "regional", level: 2, minSpanKm: 220, limit: 9800, simplify: 2, stride: 1, padding: 0.15, coarseStroke: false },
+      { name: "detail", level: 3, minSpanKm: 0, limit: 21000, simplify: 2, stride: 1, padding: 0.23, coarseStroke: false }
     ];
 
     const GEO_UNIT_STANDARD_FIELDS = [
@@ -2709,6 +2798,40 @@
         && outer.maxY >= inner.maxY;
     }
 
+    function quantizeMeters(value, size = 8000) {
+      return Math.round(value / size) * size;
+    }
+
+    function buildSubsetCacheKey(layerKey, profile, bbox) {
+      return [
+        layerKey,
+        profile.name,
+        quantizeMeters(bbox.minX),
+        quantizeMeters(bbox.minY),
+        quantizeMeters(bbox.maxX),
+        quantizeMeters(bbox.maxY),
+        profile.limit
+      ].join("|");
+    }
+
+    function readSubsetCache(cacheMap, key) {
+      if (!cacheMap.has(key)) {
+        return null;
+      }
+      const value = cacheMap.get(key);
+      cacheMap.delete(key);
+      cacheMap.set(key, value);
+      return value;
+    }
+
+    function writeSubsetCache(cacheMap, key, value) {
+      cacheMap.set(key, value);
+      while (cacheMap.size > maxSubsetCacheEntries) {
+        const oldestKey = cacheMap.keys().next().value;
+        cacheMap.delete(oldestKey);
+      }
+    }
+
     function clamp01(v) {
       return Math.max(0, Math.min(1, v));
     }
@@ -2723,13 +2846,13 @@
     function getRenderProfile(win) {
       const spanKm = Math.max(win.width, win.height) / 1000;
       const zoomProgress = getZoomProgress();
-      const profile = RENDER_INTERVALS.find((item) => spanKm >= item.minSpanKm) || RENDER_INTERVALS[RENDER_INTERVALS.length - 1];
+      const profile = LOD_BANDS.find((item) => spanKm >= item.minSpanKm) || LOD_BANDS[LOD_BANDS.length - 1];
 
       let limit = profile.limit;
-      if (zoomProgress > 0.75 && profile.level >= 8) {
-        limit = Math.round(limit * 1.18);
-      } else if (zoomProgress > 0.6 && profile.level >= 7) {
-        limit = Math.round(limit * 1.08);
+      if (zoomProgress > 0.76 && profile.level === 3) {
+        limit = Math.round(limit * 1.12);
+      } else if (zoomProgress > 0.6 && profile.level === 2) {
+        limit = Math.round(limit * 1.05);
       }
 
       return {
@@ -3014,18 +3137,8 @@
         };
       }
 
-      if (geometry.type === "Polygon") {
-        return {
-          ...geometry,
-          coordinates: geometry.coordinates.map((ring) => decimateLineCoords(ring, step, true))
-        };
-      }
-
-      if (geometry.type === "MultiPolygon") {
-        return {
-          ...geometry,
-          coordinates: geometry.coordinates.map((poly) => poly.map((ring) => decimateLineCoords(ring, step, true)))
-        };
+      if (geometry.type === "Polygon" || geometry.type === "MultiPolygon") {
+        return geometry;
       }
 
       return geometry;
@@ -3055,7 +3168,7 @@
       const kmH = Math.round(win.height / 1000);
       const profile = getRenderProfile(win);
       const detailPercent = Math.round((profile.limit / maxFeatures) * 100);
-      const stateText = `Intervall ${profile.level}/10 | Budget ${detailPercent}% | Fkl ${profile.simplify}`;
+      const stateText = `LOD ${profile.level}/3 (${profile.name}) | Budget ${detailPercent}% | Fkl ${profile.simplify}`;
       windowBadgeEl.textContent = `Kartfonster: ${kmW} x ${kmH} km | ${stateText}`;
       windowBadgeEl.classList.toggle("ok", detailPercent >= 38);
       windowBadgeEl.classList.toggle("warn", detailPercent < 38);
@@ -3280,6 +3393,48 @@
       renderBergkvalitetInfoForFeature(feature);
     }
 
+    async function fetchChunkedBinary(manifestPath, missingLabel) {
+      const manifestResponse = await fetch(manifestPath, { cache: "no-store" });
+      if (!manifestResponse.ok) {
+        throw new Error(`Kunde inte lasa ${missingLabel} manifest.`);
+      }
+
+      const manifest = await manifestResponse.json();
+      const parts = Array.isArray(manifest?.parts) ? manifest.parts : [];
+      if (!parts.length) {
+        throw new Error(`Manifest saknar delar for ${missingLabel}.`);
+      }
+
+      const totalSize = Number(manifest?.source_size) || parts.reduce((sum, part) => {
+        return sum + (Number(part?.size) || 0);
+      }, 0);
+      if (!Number.isFinite(totalSize) || totalSize <= 0) {
+        throw new Error(`Ogiltig totalstorlek i manifest for ${missingLabel}.`);
+      }
+
+      const merged = new Uint8Array(totalSize);
+      let offset = 0;
+
+      for (const part of parts) {
+        const partFile = String(part?.file || "").trim();
+        if (!partFile) {
+          throw new Error(`Manifestdel saknar filnamn for ${missingLabel}.`);
+        }
+
+        const partUrl = new URL(partFile, new URL(manifestPath, window.location.href)).toString();
+        const res = await fetch(partUrl, { cache: "no-store" });
+        if (!res.ok) {
+          throw new Error(`Kunde inte lasa chunk ${partFile} for ${missingLabel}.`);
+        }
+
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        merged.set(bytes, offset);
+        offset += bytes.length;
+      }
+
+      return merged;
+    }
+
     async function openGeoPackage() {
       if (gpkgInstance) {
         return gpkgInstance;
@@ -3296,15 +3451,8 @@
         window.GeoPackage.setSqljsWasmLocateFile((file) => "https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@4.2.8/dist/" + file);
       }
 
-      gpkgOpenPromise = fetch(gpkgPath)
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error("Kunde inte lasa GPKG-filen.");
-          }
-          return response.arrayBuffer();
-        })
-        .then((arrayBuffer) => {
-          const bytes = new Uint8Array(arrayBuffer);
+      gpkgOpenPromise = fetchChunkedBinary(gpkgManifestPath, "berggrund GPKG")
+        .then((bytes) => {
           const openFn = window.GeoPackage.open || window.GeoPackage.GeoPackageAPI?.open;
           if (!openFn) {
             throw new Error("GeoPackage API saknar open-metod.");
@@ -3452,6 +3600,57 @@
       return preloadPromise;
     }
 
+    async function warmGeoPackagesAroundView() {
+      if (window.location.protocol === "file:") {
+        return;
+      }
+
+      const win = getWindowMeters();
+      const queryBox = expandBbox(win, getAdaptiveQueryPaddingFactor(win));
+
+      await Promise.allSettled([
+        (async () => {
+          const gpkg = await openGeoPackage();
+          loadSubsetFromIndexedDao(gpkg, queryBox, Math.min(2500, maxFeatures));
+        })(),
+        (async () => {
+          const bq = await openBergkvalitetGeoPackage();
+          loadSubsetFromIndexedDaoForTable(bq, bergkvalitetTableName, queryBox, Math.min(1200, maxBergkvalitetPoints));
+        })()
+      ]);
+    }
+
+    async function initializeStartupFromLocation() {
+      if (window.location.protocol === "file:") {
+        scheduleRefresh();
+        return;
+      }
+
+      setStatus("Soker startposition och forbereder dataladdning...");
+
+      try {
+        const detected = await detectBestStartLocation();
+        if (detected) {
+          const targetZoom = Math.max(startView.zoom, 11);
+          map.setView([detected.lat, detected.lon], targetZoom);
+          setStatus(detected.source === "browser"
+            ? "Startposition hittad via webblasaren. Laddar data for narliggande omrade..."
+            : "Startposition uppskattad via IP. Laddar data for narliggande omrade...");
+        } else {
+          setStatus("Kunde inte bestamma startposition. Laddar standardomrade...");
+        }
+      } catch (_err) {
+        setStatus("Positionering misslyckades. Laddar standardomrade...");
+      }
+
+      await Promise.allSettled([
+        preloadAroundStartView(),
+        warmGeoPackagesAroundView()
+      ]);
+
+      await refreshLayerForView(true);
+    }
+
     function loadSubsetFromIndexedDaoForTable(gpkg, targetTable, bbox, limit) {
       const dao = gpkg.getFeatureDao(targetTable);
       const parseFeature = window.GeoPackage.GeoPackage.parseFeatureRowIntoGeoJSON;
@@ -3512,15 +3711,8 @@
         throw new Error("GeoPackage-biblioteket kunde inte laddas.");
       }
 
-      bergkvalitetGpkgOpenPromise = fetch(bergkvalitetGpkgPath)
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error("Kunde inte lasa bergkvalitet.gpkg.");
-          }
-          return response.arrayBuffer();
-        })
-        .then((arrayBuffer) => {
-          const bytes = new Uint8Array(arrayBuffer);
+      bergkvalitetGpkgOpenPromise = fetchChunkedBinary(bergkvalitetGpkgManifestPath, "bergkvalitet GPKG")
+        .then((bytes) => {
           const openFn = window.GeoPackage.open || window.GeoPackage.GeoPackageAPI?.open;
           if (!openFn) {
             throw new Error("GeoPackage API saknar open-metod.");
@@ -3681,6 +3873,7 @@
 
     async function refreshLayerForView(forceReload = false) {
       const token = ++refreshToken;
+      const refreshStartedAt = performance.now();
       const win = getWindowMeters();
       const profile = getRenderProfile(win);
       updateWindowBadge(win);
@@ -3701,7 +3894,7 @@
       if (!forceReload && activeLayer && bboxContains(activeQueryBox3006, win)) {
         const hasEnoughDetail = activeRenderedLimit >= renderLimit && activeSimplifyStep <= renderSimplifyStep;
         if (hasEnoughDetail) {
-          setStatus("Visar geologisk enhet yta (cache), intervall " + profile.level + ".");
+          setStatus("Visar geologisk enhet yta (cache), LOD " + profile.level + ".");
           return;
         }
       }
@@ -3722,7 +3915,7 @@
         return;
       }
 
-      setStatus("Intervallrendering niva " + profile.level + " av 10...");
+      setStatus("LOD-rendering niva " + profile.level + " av 3...");
 
       try {
         const gpkg = await openGeoPackage();
@@ -3730,7 +3923,14 @@
           return;
         }
 
-        const subset = loadSubsetFromIndexedDao(gpkg, queryBox, renderLimit);
+        const geoCacheKey = buildSubsetCacheKey("geo", profile, queryBox);
+        let subset = forceReload ? null : readSubsetCache(geoSubsetCache, geoCacheKey);
+        const usedGeoCache = Boolean(subset);
+        if (!subset) {
+          subset = loadSubsetFromIndexedDao(gpkg, queryBox, renderLimit);
+          writeSubsetCache(geoSubsetCache, geoCacheKey, subset);
+        }
+
         const transformed = toWgs84Collection(subset);
         const simplified = simplifyCollectionByStep(transformed, renderSimplifyStep);
         const thinned = thinCollectionByStride(simplified, renderStride, true);
@@ -3741,11 +3941,11 @@
             thinned,
             queryBox,
             subset.truncated,
-            "Geologisk enhet yta (intervall " + profile.level + ")",
+            "Geologisk enhet yta (LOD " + profile.level + ")",
             renderLimit,
             renderSimplifyStep,
             {
-              passType: "intervall-" + profile.level,
+              passType: "lod-" + profile.level,
               windowKm: Math.round(Math.max(win.width, win.height) / 1000),
               rawCount: subset.features.length,
               simplifiedCount: simplified.features.length,
@@ -3768,11 +3968,11 @@
             rescueCollection,
             queryBox,
             true,
-            "Geologisk enhet yta (intervall-reserv)",
+            "Geologisk enhet yta (LOD-reserv)",
             rescueLimit,
             rescueStep,
             {
-              passType: "intervall-reserv",
+              passType: "lod-reserv",
               windowKm: Math.round(Math.max(win.width, win.height) / 1000),
               rawCount: rescueSubset.features.length,
               simplifiedCount: rescueCollection.features.length,
@@ -3796,13 +3996,21 @@
           if (token !== refreshToken) {
             return;
           }
-          const bqSubset = loadSubsetFromIndexedDaoForTable(bq, bergkvalitetTableName, queryBox, maxBergkvalitetPoints);
+          const bqCacheKey = buildSubsetCacheKey("bq", profile, queryBox);
+          let bqSubset = forceReload ? null : readSubsetCache(bqSubsetCache, bqCacheKey);
+          if (!bqSubset) {
+            bqSubset = loadSubsetFromIndexedDaoForTable(bq, bergkvalitetTableName, queryBox, maxBergkvalitetPoints);
+            writeSubsetCache(bqSubsetCache, bqCacheKey, bqSubset);
+          }
           const bqWgs84 = toWgs84Collection(bqSubset);
           const bqPoints = polygonCollectionToPointCollection(bqWgs84);
           drawBergkvalitetPoints(bqPoints);
-          setStatus(`Geologisk enhet yta (intervall ${profile.level}): ${countRenderableFeatures(thinned)} objekt${subset.truncated ? " (med urval)" : ""}. Bergkvalitet-punkter: ${bqPoints.features.length}.`);
+          const elapsedMs = Math.round(performance.now() - refreshStartedAt);
+          setStatus(`Geologisk enhet yta (LOD ${profile.level}): ${countRenderableFeatures(thinned)} objekt${subset.truncated ? " (med urval)" : ""}${usedGeoCache ? " (cache)" : ""}. Bergkvalitet-punkter: ${bqPoints.features.length}. ${elapsedMs} ms.`);
         } catch (_bqError) {
           removeBergkvalitetPointLayer();
+          const elapsedMs = Math.round(performance.now() - refreshStartedAt);
+          setStatus(`Geologisk enhet yta (LOD ${profile.level}): ${countRenderableFeatures(thinned)} objekt${subset.truncated ? " (med urval)" : ""}${usedGeoCache ? " (cache)" : ""}. ${elapsedMs} ms.`);
         }
       } catch (_error) {
         removeActiveLayer();
@@ -3954,8 +4162,7 @@
     initMaterialWindow();
     initFlowMenu();
     loadQlrExtentHint();
-    preloadAroundStartView();
-    scheduleRefresh();
+    initializeStartupFromLocation();
   </script>
 </body>
 </html>
