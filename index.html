@@ -997,6 +997,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="src/prov-core.js"></script>
+  <script src="src/qr-scan-engine.js"></script>
+  <script src="src/qr-merge.js"></script>
 
   <script>
     const qlrPath = "berggrund50k-250k/berggrund50k_250k.qlr";
@@ -1201,18 +1203,13 @@
     let floatingWindowZ = 1210;
     let lastMapClickSweref = null;
     let activeProvIndex = 0;
-    let qrStream = null;
-    let qrScanTimer = null;
+    let cScanner = null;
     let qrLastDecodedPayload = "";
-    let qrScanMode = "file";
     let cActiveProvIndex = 0;
-    let dQrStream = null;
-    let dQrScanTimer = null;
+    let dScanner = null;
     let dQrLastDecodedPayload = "";
-    let dQrScanMode = "file";
     let dActiveProvIndex = 0;
-    let mergePayloadA = "";
-    let mergePayloadB = "";
+    let mergeController = null;
     const provRows = [];
     const cProvRows = [];
     const cProvLockedByRow = [];
@@ -1363,8 +1360,8 @@
 
       if (!flow) {
         activeFlow = "";
-        stopQrCameraScan();
-        stopDQrCameraScan();
+        cScanner?.stop();
+        dScanner?.stop();
         for (const winEl of document.querySelectorAll("[data-flow-window]")) {
           winEl.style.display = "none";
         }
@@ -1377,10 +1374,10 @@
       activeFlow = flowId;
 
       if (activeFlow !== "C") {
-        stopQrCameraScan();
+        cScanner?.stop();
       }
       if (activeFlow !== "D") {
-        stopDQrCameraScan();
+        dScanner?.stop();
       }
 
       const titleEl = document.getElementById("flow-title");
@@ -1448,24 +1445,6 @@
         .replace(/'/g, "&#39;");
     }
 
-
-    function setQrScanMode(mode) {
-      qrScanMode = mode === "camera" ? "camera" : "file";
-
-      for (const btn of document.querySelectorAll("#qr-mode-tabs [data-qr-mode]")) {
-        const isActive = btn.getAttribute("data-qr-mode") === qrScanMode;
-        btn.classList.toggle("active", isActive);
-      }
-
-      for (const pane of document.querySelectorAll("[data-qr-pane]")) {
-        const paneMode = pane.getAttribute("data-qr-pane");
-        pane.style.display = paneMode === qrScanMode ? "block" : "none";
-      }
-
-      if (qrScanMode !== "camera") {
-        stopQrCameraScan();
-      }
-    }
 
     function ensureCProvState() {
       if (!cProvRows.length) {
@@ -1621,175 +1600,32 @@
       setQrScanStatus("QR-kod lases men innehaller inte igenkannbar prov-CSV.", true);
     }
 
-    function stopQrCameraScan() {
-      if (qrScanTimer) {
-        clearInterval(qrScanTimer);
-        qrScanTimer = null;
-      }
-
-      if (qrStream) {
-        for (const track of qrStream.getTracks()) {
-          track.stop();
-        }
-        qrStream = null;
-      }
-
-      const videoEl = document.getElementById("qr-video");
-      if (videoEl) {
-        videoEl.srcObject = null;
-      }
-      setQrScanStatus("Skanner inaktiv.");
-    }
-
     function decodeQrFromCanvas(canvasEl) {
-      if (!canvasEl || !window.jsQR) {
-        return "";
-      }
-
-      const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
-      if (!ctx) {
-        return "";
-      }
-      const imageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
-      const detected = window.jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "attemptBoth"
-      });
-      return detected?.data || "";
-    }
-
-    async function startQrCameraScan() {
-      const videoEl = document.getElementById("qr-video");
-      const canvasEl = document.getElementById("qr-canvas");
-      if (!videoEl || !canvasEl) {
-        return;
-      }
-
-      stopQrCameraScan();
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setQrScanStatus("Webkamera stodds inte i denna webblasare.", true);
-        return;
-      }
-
-      try {
-        qrStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment"
-          },
-          audio: false
-        });
-        videoEl.srcObject = qrStream;
-        await videoEl.play();
-        setQrScanStatus("Webkamera aktiv. Haller pa att skanna...");
-
-        qrScanTimer = setInterval(() => {
-          if (!videoEl.videoWidth || !videoEl.videoHeight) {
-            return;
-          }
-
-          canvasEl.width = videoEl.videoWidth;
-          canvasEl.height = videoEl.videoHeight;
-          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
-          if (!ctx) {
-            return;
-          }
-          ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
-
-          const data = decodeQrFromCanvas(canvasEl);
-          if (data) {
-            handleDecodedQrPayload(data, "QR-kod hittad via webkamera.");
-          }
-        }, 220);
-      } catch (_err) {
-        setQrScanStatus("Kunde inte starta webkamera. Kontrollera tillstand.", true);
-      }
-    }
-
-    function decodeQrFromUploadedFile(file) {
-      const canvasEl = document.getElementById("qr-canvas");
-      if (!canvasEl) {
-        return;
-      }
-
-      const img = new Image();
-      const objectUrl = URL.createObjectURL(file);
-      img.onload = () => {
-        try {
-          canvasEl.width = img.naturalWidth || img.width;
-          canvasEl.height = img.naturalHeight || img.height;
-          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
-          if (!ctx) {
-            setQrScanStatus("Kunde inte lasa bild for QR-skanning.", true);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
-          const data = decodeQrFromCanvas(canvasEl);
-          if (data) {
-            handleDecodedQrPayload(data, "QR-kod hittad i uppladdad bild.");
-          } else {
-            setQrScanStatus("Ingen QR-kod hittades i vald bild.", true);
-          }
-        } finally {
-          URL.revokeObjectURL(objectUrl);
-        }
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        setQrScanStatus("Kunde inte lasa vald bild.", true);
-      };
-      img.src = objectUrl;
+      return window.QrScanEngine.decodeQrFromCanvas(canvasEl);
     }
 
     function initQrScanWindow() {
-      const modeTabs = document.getElementById("qr-mode-tabs");
-      const startBtn = document.getElementById("qr-start-camera");
-      const stopBtn = document.getElementById("qr-stop-camera");
-      const fileInput = document.getElementById("qr-file-input");
       const cTabsEl = document.getElementById("c-prov-sample-tabs");
       const cFieldsEl = document.getElementById("c-prov-fields-grid");
       const cRemoveBtn = document.getElementById("c-prov-remove-active");
       const cClearBtn = document.getElementById("c-prov-clear-all");
 
-      setQrScanMode("file");
-
-      if (modeTabs) {
-        modeTabs.addEventListener("click", (event) => {
-          const target = event.target;
-          if (!(target instanceof HTMLElement)) {
-            return;
-          }
-          const mode = target.getAttribute("data-qr-mode");
-          if (!mode) {
-            return;
-          }
-          setQrScanMode(mode);
-        });
-      }
-
-      if (startBtn) {
-        startBtn.addEventListener("click", () => {
-          setQrScanMode("camera");
-          startQrCameraScan();
-        });
-      }
-
-      if (stopBtn) {
-        stopBtn.addEventListener("click", () => {
-          stopQrCameraScan();
-        });
-      }
-
-      if (fileInput) {
-        fileInput.addEventListener("change", () => {
-          const file = fileInput.files?.[0];
-          if (!file) {
-            return;
-          }
-          setQrScanMode("file");
-          decodeQrFromUploadedFile(file);
-          fileInput.value = "";
-        });
-      }
+      cScanner = window.QrScanEngine.createScanner({
+        modeTabsSelector: "#qr-mode-tabs",
+        modeAttr: "data-qr-mode",
+        paneAttr: "data-qr-pane",
+        defaultMode: "file",
+        videoId: "qr-video",
+        canvasId: "qr-canvas",
+        startBtnId: "qr-start-camera",
+        stopBtnId: "qr-stop-camera",
+        fileInputId: "qr-file-input",
+        setStatus: setQrScanStatus,
+        onDecoded: (data, source) => {
+          const msg = source === "camera" ? "QR-kod hittad via webkamera." : "QR-kod hittad i uppladdad bild.";
+          handleDecodedQrPayload(data, msg);
+        }
+      });
 
       if (cTabsEl) {
         cTabsEl.addEventListener("click", (event) => {
@@ -1919,25 +1755,7 @@
       }
 
       if (activeTab !== "supplement") {
-        stopDQrCameraScan();
-      }
-    }
-
-    function setDQrScanMode(mode) {
-      dQrScanMode = mode === "camera" ? "camera" : "file";
-
-      for (const btn of document.querySelectorAll("#d-qr-mode-tabs [data-d-qr-mode]")) {
-        const isActive = btn.getAttribute("data-d-qr-mode") === dQrScanMode;
-        btn.classList.toggle("active", isActive);
-      }
-
-      for (const pane of document.querySelectorAll("[data-d-qr-pane]")) {
-        const paneMode = pane.getAttribute("data-d-qr-pane");
-        pane.style.display = paneMode === dQrScanMode ? "block" : "none";
-      }
-
-      if (dQrScanMode !== "camera") {
-        stopDQrCameraScan();
+        dScanner?.stop();
       }
     }
 
@@ -1956,109 +1774,6 @@
         return;
       }
       resultEl.textContent = text || "Ingen kod skannad annu.";
-    }
-
-    function stopDQrCameraScan() {
-      if (dQrScanTimer) {
-        clearInterval(dQrScanTimer);
-        dQrScanTimer = null;
-      }
-
-      if (dQrStream) {
-        for (const track of dQrStream.getTracks()) {
-          track.stop();
-        }
-        dQrStream = null;
-      }
-
-      const videoEl = document.getElementById("d-qr-video");
-      if (videoEl) {
-        videoEl.srcObject = null;
-      }
-      setDQrScanStatus("Skanner inaktiv.");
-    }
-
-    async function startDQrCameraScan() {
-      const videoEl = document.getElementById("d-qr-video");
-      const canvasEl = document.getElementById("d-qr-canvas");
-      if (!videoEl || !canvasEl) {
-        return;
-      }
-
-      stopDQrCameraScan();
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setDQrScanStatus("Webkamera stodds inte i denna webblasare.", true);
-        return;
-      }
-
-      try {
-        dQrStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment"
-          },
-          audio: false
-        });
-        videoEl.srcObject = dQrStream;
-        await videoEl.play();
-        setDQrScanStatus("Webkamera aktiv. Haller pa att skanna...");
-
-        dQrScanTimer = setInterval(() => {
-          if (!videoEl.videoWidth || !videoEl.videoHeight) {
-            return;
-          }
-
-          canvasEl.width = videoEl.videoWidth;
-          canvasEl.height = videoEl.videoHeight;
-          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
-          if (!ctx) {
-            return;
-          }
-          ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
-
-          const data = decodeQrFromCanvas(canvasEl);
-          if (data) {
-            handleDecodedDQrPayload(data, "QR-kod hittad via webkamera.");
-          }
-        }, 220);
-      } catch (_err) {
-        setDQrScanStatus("Kunde inte starta webkamera. Kontrollera tillstand.", true);
-      }
-    }
-
-    function decodeDQrFromUploadedFile(file) {
-      const canvasEl = document.getElementById("d-qr-canvas");
-      if (!canvasEl) {
-        return;
-      }
-
-      const img = new Image();
-      const objectUrl = URL.createObjectURL(file);
-      img.onload = () => {
-        try {
-          canvasEl.width = img.naturalWidth || img.width;
-          canvasEl.height = img.naturalHeight || img.height;
-          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
-          if (!ctx) {
-            setDQrScanStatus("Kunde inte lasa bild for QR-skanning.", true);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
-          const data = decodeQrFromCanvas(canvasEl);
-          if (data) {
-            handleDecodedDQrPayload(data, "QR-kod hittad i uppladdad bild.");
-          } else {
-            setDQrScanStatus("Ingen QR-kod hittades i vald bild.", true);
-          }
-        } finally {
-          URL.revokeObjectURL(objectUrl);
-        }
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        setDQrScanStatus("Kunde inte lasa vald bild.", true);
-      };
-      img.src = objectUrl;
     }
 
     function ensureDProvState() {
@@ -2215,144 +1930,43 @@
       setDQrScanStatus("QR-kod lases men innehaller inte igenkannbar prov-CSV.", true);
     }
 
-    function setMergeStatus(slot, message, isError = false) {
-      const el = document.getElementById(`merge-status-${slot}`);
-      if (!el) {
-        return;
-      }
-      el.textContent = message;
-      el.classList.toggle("error", !!isError);
-    }
-
-    function renderMergedQrPayload(csvText) {
-      const qrWrap = document.getElementById("merge-qr-wrap");
-      if (!qrWrap) {
-        return;
-      }
-      qrWrap.innerHTML = "";
-
-      if (!csvText.trim()) {
-        qrWrap.innerHTML = '<div class="mono">Ingen sammanslagen QR skapad.</div>';
-        return;
-      }
-
-      if (!window.QRCode) {
-        qrWrap.innerHTML = '<div class="mono">QR-bibliotek saknas i lasaren.</div>';
-        return;
-      }
-
-      try {
-        new window.QRCode(qrWrap, {
-          text: csvText,
-          width: 210,
-          height: 210,
-          correctLevel: window.QRCode.CorrectLevel.M
-        });
-      } catch (_err) {
-        qrWrap.innerHTML = '<div class="mono">Kunde inte skapa sammanslagen QR.</div>';
-      }
-    }
-
-    function updateMergedPayloadView() {
-      const outEl = document.getElementById("merge-raw-out");
-      if (!outEl) {
-        return;
-      }
-
-      if (!mergePayloadA.trim() || !mergePayloadB.trim()) {
-        outEl.value = "";
-        setMergeStatus("out", "Ladda in bada QR-koder for att skapa summa.");
-        renderMergedQrPayload("");
-        return;
-      }
-
-      const rowsA = buildProvRowsFromPayload(mergePayloadA);
-      const rowsB = buildProvRowsFromPayload(mergePayloadB);
-
-      if (!rowsA.length || !rowsB.length) {
-        outEl.value = "";
-        setMergeStatus("out", "En av QR-koderna innehaller inte igenkannbar prov-CSV.", true);
-        renderMergedQrPayload("");
-        return;
-      }
-
-      const mergedRows = mergeProvRowSets(rowsA, rowsB);
-      if (!mergedRows.length) {
-        outEl.value = "";
-        setMergeStatus("out", "Ingen sammanfogad data kunde skapas.", true);
-        renderMergedQrPayload("");
-        return;
-      }
-
-      const mergedCsv = buildProvCsvFromRows(mergedRows, { compactDateForQr: true });
-      outEl.value = mergedCsv;
-      setMergeStatus("out", `Summa skapad fran ${mergedRows.length} flikar.`);
-      renderMergedQrPayload(mergedCsv);
-    }
-
-    function decodeMergeQrFromFile(slot, file) {
-      const canvasEl = document.getElementById("d-qr-canvas");
-      if (!canvasEl) {
-        return;
-      }
-
-      const img = new Image();
-      const objectUrl = URL.createObjectURL(file);
-      img.onload = () => {
-        try {
-          canvasEl.width = img.naturalWidth || img.width;
-          canvasEl.height = img.naturalHeight || img.height;
-          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
-          if (!ctx) {
-            setMergeStatus(slot, "Kunde inte lasa bild for QR-skanning.", true);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
-          const data = decodeQrFromCanvas(canvasEl);
-          if (!data) {
-            setMergeStatus(slot, "Ingen QR-kod hittades i vald bild.", true);
-            return;
-          }
-
-          if (slot === "a") {
-            mergePayloadA = String(data);
-          } else {
-            mergePayloadB = String(data);
-          }
-
-          const rawEl = document.getElementById(slot === "a" ? "merge-raw-a" : "merge-raw-b");
-          if (rawEl) {
-            rawEl.value = String(data);
-          }
-          setMergeStatus(slot, "QR-kod inlast.");
-          updateMergedPayloadView();
-        } finally {
-          URL.revokeObjectURL(objectUrl);
-        }
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        setMergeStatus(slot, "Kunde inte lasa vald bild.", true);
-      };
-      img.src = objectUrl;
-    }
-
     function initMaterialWindow() {
       const materialTabs = document.getElementById("material-main-tabs");
-      const dModeTabs = document.getElementById("d-qr-mode-tabs");
-      const dStartBtn = document.getElementById("d-qr-start-camera");
-      const dStopBtn = document.getElementById("d-qr-stop-camera");
-      const dFileInput = document.getElementById("d-qr-file-input");
       const dTabsEl = document.getElementById("d-prov-sample-tabs");
       const dFieldsEl = document.getElementById("d-prov-fields-grid");
       const dRemoveBtn = document.getElementById("d-prov-remove-active");
       const dClearBtn = document.getElementById("d-prov-clear-all");
-      const mergeFileA = document.getElementById("merge-file-a");
-      const mergeFileB = document.getElementById("merge-file-b");
-      const mergeBtn = document.getElementById("merge-generate-qr");
 
       setMaterialTab("supplement");
-      setDQrScanMode("file");
+      dScanner = window.QrScanEngine.createScanner({
+        modeTabsSelector: "#d-qr-mode-tabs",
+        modeAttr: "data-d-qr-mode",
+        paneAttr: "data-d-qr-pane",
+        defaultMode: "file",
+        videoId: "d-qr-video",
+        canvasId: "d-qr-canvas",
+        startBtnId: "d-qr-start-camera",
+        stopBtnId: "d-qr-stop-camera",
+        fileInputId: "d-qr-file-input",
+        setStatus: setDQrScanStatus,
+        onDecoded: (data, source) => {
+          const msg = source === "camera" ? "QR-kod hittad via webkamera." : "QR-kod hittad i uppladdad bild.";
+          handleDecodedDQrPayload(data, msg);
+        }
+      });
+
+      mergeController = window.QrMerge.createMergeController({
+        fileInputAId: "merge-file-a",
+        fileInputBId: "merge-file-b",
+        rawAId: "merge-raw-a",
+        rawBId: "merge-raw-b",
+        rawOutId: "merge-raw-out",
+        qrWrapId: "merge-qr-wrap",
+        statusAId: "merge-status-a",
+        statusBId: "merge-status-b",
+        statusOutId: "merge-status-out",
+        generateBtnId: "merge-generate-qr"
+      });
 
       if (materialTabs) {
         materialTabs.addEventListener("click", (event) => {
@@ -2365,45 +1979,6 @@
             return;
           }
           setMaterialTab(tab);
-        });
-      }
-
-      if (dModeTabs) {
-        dModeTabs.addEventListener("click", (event) => {
-          const target = event.target;
-          if (!(target instanceof HTMLElement)) {
-            return;
-          }
-          const mode = target.getAttribute("data-d-qr-mode");
-          if (!mode) {
-            return;
-          }
-          setDQrScanMode(mode);
-        });
-      }
-
-      if (dStartBtn) {
-        dStartBtn.addEventListener("click", () => {
-          setDQrScanMode("camera");
-          startDQrCameraScan();
-        });
-      }
-
-      if (dStopBtn) {
-        dStopBtn.addEventListener("click", () => {
-          stopDQrCameraScan();
-        });
-      }
-
-      if (dFileInput) {
-        dFileInput.addEventListener("change", () => {
-          const file = dFileInput.files?.[0];
-          if (!file) {
-            return;
-          }
-          setDQrScanMode("file");
-          decodeDQrFromUploadedFile(file);
-          dFileInput.value = "";
         });
       }
 
@@ -2516,33 +2091,6 @@
         });
       }
 
-      if (mergeFileA) {
-        mergeFileA.addEventListener("change", () => {
-          const file = mergeFileA.files?.[0];
-          if (!file) {
-            return;
-          }
-          decodeMergeQrFromFile("a", file);
-          mergeFileA.value = "";
-        });
-      }
-
-      if (mergeFileB) {
-        mergeFileB.addEventListener("change", () => {
-          const file = mergeFileB.files?.[0];
-          if (!file) {
-            return;
-          }
-          decodeMergeQrFromFile("b", file);
-          mergeFileB.value = "";
-        });
-      }
-
-      if (mergeBtn) {
-        mergeBtn.addEventListener("click", () => {
-          updateMergedPayloadView();
-        });
-      }
     }
 
     function buildProvCsv(options = {}) {
