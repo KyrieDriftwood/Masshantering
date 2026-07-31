@@ -1006,6 +1006,7 @@
     const tableName = "geologisk_enhet_yta";
     const bergkvalitetGpkgManifestPath = "bergkvalitet/bergkvalitet_parts/bergkvalitet.gpkg.manifest.json";
     const bergkvalitetTableName = "bergkvalitet_vag";
+    const rawRepoBase = "https://raw.githubusercontent.com/KyrieDriftwood/Masshantering/main/";
     const maxFeatures = 32000;
     const maxBergkvalitetPoints = 3500;
     const queryPaddingFactor = 0.22;
@@ -3393,11 +3394,33 @@
       renderBergkvalitetInfoForFeature(feature);
     }
 
-    async function fetchChunkedBinary(manifestPath, missingLabel) {
-      const manifestResponse = await fetch(manifestPath, { cache: "no-store" });
-      if (!manifestResponse.ok) {
-        throw new Error(`Kunde inte lasa ${missingLabel} manifest.`);
+    function buildAssetCandidateUrls(assetPath) {
+      const fromSite = new URL(assetPath, window.location.href).toString();
+      const fromRawRepo = new URL(assetPath, rawRepoBase).toString();
+      return fromSite === fromRawRepo ? [fromSite] : [fromSite, fromRawRepo];
+    }
+
+    async function fetchWithFallback(assetPath, missingLabel, options = { cache: "no-store" }) {
+      let lastError = null;
+      for (const url of buildAssetCandidateUrls(assetPath)) {
+        try {
+          const response = await fetch(url, options);
+          if (response.ok) {
+            return { response, url };
+          }
+          lastError = new Error(`HTTP ${response.status} for ${url}`);
+        } catch (err) {
+          lastError = err;
+        }
       }
+      throw new Error(`Kunde inte lasa ${missingLabel}.` + (lastError ? ` (${String(lastError)})` : ""));
+    }
+
+    async function fetchChunkedBinary(manifestPath, missingLabel) {
+      const { response: manifestResponse, url: resolvedManifestUrl } = await fetchWithFallback(
+        manifestPath,
+        `${missingLabel} manifest`
+      );
 
       const manifest = await manifestResponse.json();
       const parts = Array.isArray(manifest?.parts) ? manifest.parts : [];
@@ -3421,7 +3444,7 @@
           throw new Error(`Manifestdel saknar filnamn for ${missingLabel}.`);
         }
 
-        const partUrl = new URL(partFile, new URL(manifestPath, window.location.href)).toString();
+        const partUrl = new URL(partFile, resolvedManifestUrl).toString();
         const res = await fetch(partUrl, { cache: "no-store" });
         if (!res.ok) {
           throw new Error(`Kunde inte lasa chunk ${partFile} for ${missingLabel}.`);
@@ -4022,10 +4045,7 @@
 
     async function loadQlrExtentHint() {
       try {
-        const response = await fetch(qlrPath, { cache: "no-store" });
-        if (!response.ok) {
-          return;
-        }
+        const { response } = await fetchWithFallback(qlrPath, "QLR-stilfil");
 
         const qlrText = await response.text();
         parseQlrSymbolStylesFromText(qlrText);
