@@ -514,6 +514,36 @@
       background: #f7fbfc;
     }
 
+    .progress-wrap {
+      border: 1px solid var(--line);
+      border-radius: 0.75rem;
+      background: #ffffff;
+      padding: 0.5rem 0.6rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .progress-label {
+      margin-bottom: 0.35rem;
+      font-size: 0.8rem;
+      color: #1a2d34;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 0.62rem;
+      border-radius: 99px;
+      background: #e4ecef;
+      overflow: hidden;
+      border: 1px solid #ced9dd;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0c7489 0%, #2a9d8f 100%);
+      transition: width 140ms ease;
+    }
+
     .mono {
       font-family: Consolas, "Courier New", monospace;
       font-size: 0.84rem;
@@ -738,6 +768,12 @@
             <p id="flow-caption">Koordinater, geologisk yta och bergkvalitet for skrivbordsstudie.</p>
             <span class="badge" id="window-badge">Kartfonster: ...</span>
             <div class="status" id="status">Initierar...</div>
+            <div class="progress-wrap" id="load-progress-wrap" hidden>
+              <div class="progress-label mono" id="load-progress-label">Laddning: 0%</div>
+              <div class="progress-track" id="load-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Laddningsprogress">
+                <div class="progress-fill" id="load-progress-fill"></div>
+              </div>
+            </div>
             <div class="coord" id="coords">Klicka i kartan for koordinater.</div>
 
             <div class="unit-info" id="unit-info-wrap">
@@ -1268,6 +1304,10 @@
     }).addTo(map);
 
     const statusEl = document.getElementById("status");
+    const loadProgressWrapEl = document.getElementById("load-progress-wrap");
+    const loadProgressLabelEl = document.getElementById("load-progress-label");
+    const loadProgressBarEl = document.getElementById("load-progress-bar");
+    const loadProgressFillEl = document.getElementById("load-progress-fill");
     const coordsEl = document.getElementById("coords");
     const unitInfoEl = document.getElementById("unit-info");
     const bergkvalitetInfoEl = document.getElementById("bergkvalitet-info");
@@ -2541,6 +2581,29 @@
       statusEl.textContent = text;
     }
 
+    function setLoadProgress(progressText, ratio = 0) {
+      if (!loadProgressWrapEl || !loadProgressLabelEl || !loadProgressBarEl || !loadProgressFillEl) {
+        return;
+      }
+
+      const safeRatio = Math.max(0, Math.min(1, Number(ratio) || 0));
+      const percent = Math.round(safeRatio * 100);
+      loadProgressWrapEl.hidden = false;
+      loadProgressLabelEl.textContent = progressText || `Laddning: ${percent}%`;
+      loadProgressFillEl.style.width = `${percent}%`;
+      loadProgressBarEl.setAttribute("aria-valuenow", String(percent));
+    }
+
+    function hideLoadProgress() {
+      if (!loadProgressWrapEl || !loadProgressLabelEl || !loadProgressBarEl || !loadProgressFillEl) {
+        return;
+      }
+      loadProgressWrapEl.hidden = true;
+      loadProgressLabelEl.textContent = "Laddning: 0%";
+      loadProgressFillEl.style.width = "0%";
+      loadProgressBarEl.setAttribute("aria-valuenow", "0");
+    }
+
     function colorFromValue(value) {
       let seed = Number(value);
       if (!Number.isFinite(seed)) {
@@ -3517,6 +3580,8 @@
       gpkgOpenPromise = fetchChunkedBinary(gpkgManifestPath, "berggrund GPKG", (progress) => {
         const mbLoaded = Math.round(progress.loadedBytes / (1024 * 1024));
         const mbTotal = Math.round(progress.totalBytes / (1024 * 1024));
+        const ratio = progress.totalBytes > 0 ? (progress.loadedBytes / progress.totalBytes) : 0;
+        setLoadProgress(`Berggrund GPKG: ${Math.round(ratio * 100)}% (${mbLoaded}/${mbTotal} MB)`, ratio);
         setStatus(`Laddar berggrund GPKG: del ${progress.loadedParts}/${progress.totalParts} (${mbLoaded}/${mbTotal} MB)`);
       })
         .then((bytes) => {
@@ -3528,6 +3593,7 @@
         })
         .then((gpkg) => {
           gpkgInstance = gpkg;
+          setLoadProgress("Berggrund GPKG: 100%", 1);
           return gpkg;
         })
         .finally(() => {
@@ -3779,11 +3845,10 @@
       }
 
       bergkvalitetGpkgOpenPromise = fetchChunkedBinary(bergkvalitetGpkgManifestPath, "bergkvalitet GPKG", (progress) => {
-        if (progress.totalParts <= 1) {
-          return;
-        }
         const mbLoaded = Math.round(progress.loadedBytes / (1024 * 1024));
         const mbTotal = Math.round(progress.totalBytes / (1024 * 1024));
+        const ratio = progress.totalBytes > 0 ? (progress.loadedBytes / progress.totalBytes) : 0;
+        setLoadProgress(`Bergkvalitet GPKG: ${Math.round(ratio * 100)}% (${mbLoaded}/${mbTotal} MB)`, ratio);
         setStatus(`Laddar bergkvalitet GPKG: del ${progress.loadedParts}/${progress.totalParts} (${mbLoaded}/${mbTotal} MB)`);
       })
         .then((bytes) => {
@@ -3795,6 +3860,7 @@
         })
         .then((gpkg) => {
           bergkvalitetGpkgInstance = gpkg;
+          setLoadProgress("Bergkvalitet GPKG: 100%", 1);
           return gpkg;
         })
         .finally(() => {
@@ -3955,6 +4021,7 @@
       if (window.location.protocol === "file:") {
         removeActiveLayer();
         removeBergkvalitetPointLayer();
+        hideLoadProgress();
         clearUnitInfo("Ingen geologisk enhet tillganglig i file-lage.");
         setStatus("Kors i file-lage: kor via http:// for att kunna lasa GPKG.");
         return;
@@ -3990,6 +4057,7 @@
       }
 
       setStatus("LOD-rendering niva " + profile.level + " av 3...");
+      setLoadProgress("Forbereder laddning...", 0);
 
       try {
         const gpkg = await openGeoPackage();
@@ -4081,14 +4149,17 @@
           drawBergkvalitetPoints(bqPoints);
           const elapsedMs = Math.round(performance.now() - refreshStartedAt);
           setStatus(`Geologisk enhet yta (LOD ${profile.level}): ${countRenderableFeatures(thinned)} objekt${subset.truncated ? " (med urval)" : ""}${usedGeoCache ? " (cache)" : ""}. Bergkvalitet-punkter: ${bqPoints.features.length}. ${elapsedMs} ms.`);
+          hideLoadProgress();
         } catch (_bqError) {
           removeBergkvalitetPointLayer();
           const elapsedMs = Math.round(performance.now() - refreshStartedAt);
           setStatus(`Geologisk enhet yta (LOD ${profile.level}): ${countRenderableFeatures(thinned)} objekt${subset.truncated ? " (med urval)" : ""}${usedGeoCache ? " (cache)" : ""}. ${elapsedMs} ms.`);
+          hideLoadProgress();
         }
       } catch (error) {
         removeActiveLayer();
         removeBergkvalitetPointLayer();
+        hideLoadProgress();
         clearUnitInfo("Kunde inte lasa geologisk enhet just nu.");
         const msg = String(error?.message || "").trim();
         setStatus(msg ? `Kunde inte ladda geologisk enhet yta: ${msg}` : "Kunde inte ladda geologisk enhet yta just nu.");
