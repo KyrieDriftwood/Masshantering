@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser Debug Studio</title>
+  <style>
+    :root {
+      --bg: #f2efe8;
+      --panel: #fffdf8;
+      --ink: #1f2a30;
+      --muted: #5f6d73;
+      --accent: #0b7285;
+      --accent-2: #e8590c;
+      --ok: #2b8a3e;
+      --warn: #c77d00;
+      --error: #c92a2a;
+      --ring: rgba(11, 114, 133, 0.25);
+      --shadow: 0 14px 40px rgba(26, 33, 40, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 0%, #f9d7b5 0%, transparent 38%),
+        radial-gradient(circle at 100% 80%, #b3e5d8 0%, transparent 35%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    .page {
+      width: min(1200px, 96vw);
+      margin: 24px auto 30px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero {
+      background: linear-gradient(120deg, #fff6ee 0%, #f4fffc 100%);
+      border: 1px solid #f5d6b8;
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+      animation: rise 350ms ease-out;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.4rem, 2.2vw, 2rem);
+      letter-spacing: 0.02em;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 70ch;
+      line-height: 1.4;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    @media (min-width: 960px) {
+      .grid {
+        grid-template-columns: 1.2fr 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid #d9ddd5;
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+      animation: rise 500ms ease-out;
+    }
+
+    .panel h2 {
+      margin: 4px 0 10px;
+      font-size: 1.06rem;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 9px 14px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 120ms ease, filter 120ms ease;
+    }
+
+    button.secondary {
+      background: #3f4c53;
+    }
+
+    button.alt {
+      background: var(--accent-2);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.05);
+    }
+
+    button:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid var(--ring);
+      outline-offset: 1px;
+    }
+
+    .inputs {
+      display: grid;
+      gap: 10px;
+    }
+
+    .input-group {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #324148;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 130px;
+      resize: vertical;
+      border-radius: 12px;
+      border: 1px solid #c6cdc7;
+      padding: 11px;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 0.9rem;
+      line-height: 1.45;
+      background: #fff;
+    }
+
+    iframe {
+      width: 100%;
+      height: 280px;
+      border: 1px solid #d3d9d3;
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .meta {
+      display: grid;
+      gap: 9px;
+      margin-bottom: 12px;
+    }
+
+    .meta-row {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 10px;
+      font-size: 0.9rem;
+    }
+
+    .meta-row strong {
+      color: #3d4b51;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      width: fit-content;
+    }
+
+    .badge.ok { background: #e8f7ec; color: var(--ok); }
+    .badge.warn { background: #fff6de; color: var(--warn); }
+
+    .log {
+      margin-top: 8px;
+      border: 1px solid #d3d9d3;
+      border-radius: 12px;
+      background: #fbfbf8;
+      min-height: 330px;
+      max-height: 420px;
+      overflow: auto;
+      padding: 10px;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 0.86rem;
+    }
+
+    .entry {
+      margin-bottom: 7px;
+      padding-bottom: 7px;
+      border-bottom: 1px dashed #dfe3da;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .entry.info { color: #2d3e44; }
+    .entry.ok { color: var(--ok); }
+    .entry.warn { color: var(--warn); }
+    .entry.error { color: var(--error); font-weight: 700; }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <h1>Browser Debug Studio</h1>
+      <p>Paste code produced by another agent and test how this browser parses and executes it. You get syntax checks, runtime errors, console logs, and quick browser capability probes.</p>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Code Inputs</h2>
+        <div class="controls">
+          <button id="exampleBtn" class="alt">Load Example</button>
+          <button id="syntaxBtn" class="secondary">Check JS Syntax</button>
+          <button id="runBtn">Run In Sandbox</button>
+          <button id="clearBtn" class="secondary">Clear Log</button>
+        </div>
+
+        <div class="inputs">
+          <div class="input-group">
+            <label for="htmlInput">HTML</label>
+            <textarea id="htmlInput" spellcheck="false" placeholder="Paste HTML here"></textarea>
+          </div>
+
+          <div class="input-group">
+            <label for="cssInput">CSS</label>
+            <textarea id="cssInput" spellcheck="false" placeholder="Paste CSS here"></textarea>
+          </div>
+
+          <div class="input-group">
+            <label for="jsInput">JavaScript</label>
+            <textarea id="jsInput" spellcheck="false" placeholder="Paste JavaScript here"></textarea>
+          </div>
+        </div>
+
+        <h2 style="margin-top: 14px;">Sandbox Output</h2>
+        <iframe id="preview" sandbox="allow-scripts allow-forms allow-modals"></iframe>
+      </article>
+
+      <article class="panel">
+        <h2>Browser Snapshot</h2>
+        <div id="browserMeta" class="meta"></div>
+
+        <h2>Runtime Log</h2>
+        <div id="log" class="log" aria-live="polite"></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const htmlInput = document.getElementById("htmlInput");
+    const cssInput = document.getElementById("cssInput");
+    const jsInput = document.getElementById("jsInput");
+    const logNode = document.getElementById("log");
+    const preview = document.getElementById("preview");
+    const browserMeta = document.getElementById("browserMeta");
+
+    const STORAGE_KEY = "browser-debug-studio-state-v1";
+
+    function addLog(level, text) {
+      const row = document.createElement("div");
+      row.className = "entry " + level;
+      const time = new Date().toLocaleTimeString();
+      row.textContent = "[" + time + "] " + text;
+      logNode.prepend(row);
+    }
+
+    function clearLog() {
+      logNode.innerHTML = "";
+    }
+
+    function escapeScriptClosingTags(source) {
+      return source.replace(/<\/(script)/gi, "<\\/$1");
+    }
+
+    function saveState() {
+      const payload = {
+        html: htmlInput.value,
+        css: cssInput.value,
+        js: jsInput.value
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    }
+
+    function loadState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      try {
+        const state = JSON.parse(raw);
+        htmlInput.value = state.html || "";
+        cssInput.value = state.css || "";
+        jsInput.value = state.js || "";
+      } catch (error) {
+        addLog("warn", "Could not parse saved state: " + error.message);
+      }
+    }
+
+    function setMetaRow(name, valueNode) {
+      const row = document.createElement("div");
+      row.className = "meta-row";
+      const key = document.createElement("strong");
+      key.textContent = name;
+      row.appendChild(key);
+      row.appendChild(valueNode);
+      browserMeta.appendChild(row);
+    }
+
+    function textNode(value) {
+      const node = document.createElement("span");
+      node.textContent = value;
+      return node;
+    }
+
+    function badge(okText, isOk) {
+      const node = document.createElement("span");
+      node.className = "badge " + (isOk ? "ok" : "warn");
+      node.textContent = isOk ? "OK: " + okText : "Check: " + okText;
+      return node;
+    }
+
+    function renderBrowserSnapshot() {
+      browserMeta.innerHTML = "";
+      setMetaRow("User agent", textNode(navigator.userAgent));
+      setMetaRow("Language", textNode(navigator.language));
+      setMetaRow("Platform", textNode(navigator.platform));
+      setMetaRow("Viewport", textNode(window.innerWidth + " x " + window.innerHeight));
+      setMetaRow("Online", badge("navigator.onLine", navigator.onLine));
+      setMetaRow("Cookies", badge("navigator.cookieEnabled", navigator.cookieEnabled));
+
+      const modulesSupported = "noModule" in HTMLScriptElement.prototype;
+      const serviceWorkerSupported = "serviceWorker" in navigator;
+      const webglSupported = (() => {
+        try {
+          const canvas = document.createElement("canvas");
+          return !!(window.WebGLRenderingContext && canvas.getContext("webgl"));
+        } catch {
+          return false;
+        }
+      })();
+
+      setMetaRow("ES Modules", badge("script type=module", modulesSupported));
+      setMetaRow("Service Worker", badge("navigator.serviceWorker", serviceWorkerSupported));
+      setMetaRow("WebGL", badge("WebGLRenderingContext", webglSupported));
+    }
+
+    function checkSyntax() {
+      const source = jsInput.value.trim();
+      if (!source) {
+        addLog("warn", "No JavaScript to check.");
+        return;
+      }
+
+      try {
+        // Function constructor validates syntax without executing code.
+        // eslint-disable-next-line no-new-func
+        new Function(source);
+        addLog("ok", "JavaScript syntax looks valid in this browser.");
+      } catch (error) {
+        addLog("error", "Syntax error: " + error.message);
+      }
+    }
+
+    function buildInstrumentedSource() {
+      const html = htmlInput.value;
+      const css = cssInput.value;
+      const js = jsInput.value;
+
+      const bootstrap = `
+        (function () {
+          function send(type, payload) {
+            parent.postMessage({ source: "debug-sandbox", type: type, payload: payload }, "*");
+          }
+
+          ["log", "info", "warn", "error"].forEach(function (method) {
+            const original = console[method];
+            console[method] = function () {
+              const text = Array.from(arguments).map(function (arg) {
+                if (typeof arg === "string") return arg;
+                try { return JSON.stringify(arg); } catch { return String(arg); }
+              }).join(" ");
+              send("console-" + method, text);
+              original.apply(console, arguments);
+            };
+          });
+
+          const originalFetch = window.fetch;
+          if (originalFetch) {
+            window.fetch = function () {
+              const url = arguments[0];
+              send("network", "fetch -> " + String(url));
+              return originalFetch.apply(this, arguments)
+                .then(function (response) {
+                  send("network", "fetch <- " + response.status + " " + response.url);
+                  return response;
+                });
+            };
+          }
+
+          const open = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function (method, url) {
+            this.__debugUrl = url;
+            this.__debugMethod = method;
+            return open.apply(this, arguments);
+          };
+
+          const sendXhr = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.send = function () {
+            const req = this.__debugMethod + " " + this.__debugUrl;
+            send("network", "xhr -> " + req);
+            this.addEventListener("loadend", function () {
+              send("network", "xhr <- " + this.status + " " + req);
+            });
+            return sendXhr.apply(this, arguments);
+          };
+
+          window.addEventListener("error", function (event) {
+            send("runtime-error", event.message + " @ line " + event.lineno + ":" + event.colno);
+          });
+
+          window.addEventListener("unhandledrejection", function (event) {
+            const reason = event.reason && event.reason.message ? event.reason.message : String(event.reason);
+            send("runtime-error", "Unhandled promise rejection: " + reason);
+          });
+
+          document.addEventListener("DOMContentLoaded", function () {
+            send("lifecycle", "DOMContentLoaded fired.");
+          });
+
+          window.addEventListener("load", function () {
+            send("lifecycle", "Window load fired.");
+          });
+
+          send("lifecycle", "Sandbox booted.");
+        })();
+      `;
+
+      return `
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>${css}</style>
+          </head>
+          <body>
+            ${html}
+            <script>${escapeScriptClosingTags(bootstrap)}<\/script>
+            <script>${escapeScriptClosingTags(js)}<\/script>
+          </body>
+        </html>
+      `;
+    }
+
+    function runInSandbox() {
+      saveState();
+      clearLog();
+      addLog("info", "Sandbox run started.");
+
+      const source = buildInstrumentedSource();
+      preview.srcdoc = source;
+    }
+
+    function loadExample() {
+      htmlInput.value = `<h3 id="title">Hello browser debugger</h3>\n<button id="btn">Click me</button>`;
+      cssInput.value = `body { font-family: system-ui, sans-serif; padding: 14px; }\n#title { color: #0b7285; }`;
+      jsInput.value = `console.log("Example script loaded");\ndocument.getElementById("btn").addEventListener("click", () => {\n  console.info("Button clicked");\n  document.getElementById("title").textContent = "State changed";\n});`;
+      saveState();
+      addLog("info", "Example code loaded.");
+    }
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== preview.contentWindow) {
+        return;
+      }
+      const data = event.data || {};
+      if (data.source !== "debug-sandbox") {
+        return;
+      }
+
+      if (data.type === "console-error" || data.type === "runtime-error") {
+        addLog("error", data.payload);
+        return;
+      }
+      if (data.type === "console-warn") {
+        addLog("warn", data.payload);
+        return;
+      }
+      if (data.type === "console-log" || data.type === "console-info") {
+        addLog("info", data.payload);
+        return;
+      }
+      if (data.type === "network") {
+        addLog("ok", data.payload);
+        return;
+      }
+      if (data.type === "lifecycle") {
+        addLog("ok", data.payload);
+      }
+    });
+
+    document.getElementById("syntaxBtn").addEventListener("click", checkSyntax);
+    document.getElementById("runBtn").addEventListener("click", runInSandbox);
+    document.getElementById("clearBtn").addEventListener("click", clearLog);
+    document.getElementById("exampleBtn").addEventListener("click", loadExample);
+
+    [htmlInput, cssInput, jsInput].forEach((input) => {
+      input.addEventListener("input", saveState);
+    });
+
+    renderBrowserSnapshot();
+    loadState();
+    if (!htmlInput.value && !cssInput.value && !jsInput.value) {
+      loadExample();
+    }
+  </script>
+</body>
+</html>

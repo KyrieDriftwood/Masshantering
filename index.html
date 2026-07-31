@@ -1,0 +1,4413 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Berggrund 50k-250k - Geologisk enhet yta</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+
+  <style>
+    :root {
+      --bg: #f5f2e9;
+      --panel: rgba(255, 255, 255, 0.95);
+      --ink: #1f2a2e;
+      --muted: #5b6669;
+      --accent: #005f73;
+      --line: #d3d8d4;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      font-family: "Public Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% 0%, #f4e7cb 0%, transparent 45%),
+        radial-gradient(circle at 80% 100%, #d6e5d2 0%, transparent 38%),
+        var(--bg);
+    }
+
+    #map {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+
+    .topbar {
+      position: fixed;
+      top: 0.55rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1300;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.35rem;
+      border: 1px solid var(--line);
+      border-radius: 0.85rem;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 28px rgba(24, 39, 55, 0.14);
+      pointer-events: auto;
+    }
+
+    .flow-btn {
+      border: 1px solid #bcc6c9;
+      background: #ffffff;
+      border-radius: 0.55rem;
+      padding: 0.42rem 0.6rem;
+      color: #1c2d33;
+      font-weight: 600;
+      font-size: 0.82rem;
+      line-height: 1.1;
+      cursor: pointer;
+      min-width: 8rem;
+      text-align: center;
+    }
+
+    .flow-btn.active {
+      background: #005f73;
+      color: #ffffff;
+      border-color: #004f60;
+    }
+
+    .flow-tag {
+      display: block;
+      font-size: 0.7rem;
+      opacity: 0.9;
+      margin-top: 0.08rem;
+      letter-spacing: 0.02em;
+    }
+
+    .workspace-ui {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      pointer-events: none;
+    }
+
+    /* Keep a standard cursor for all map interaction states. */
+    #map,
+    #map .leaflet-container,
+    #map .leaflet-pane,
+    #map .leaflet-interactive,
+    #map.leaflet-grab,
+    #map.leaflet-touch-drag,
+    #map.leaflet-dragging {
+      cursor: default !important;
+    }
+
+    #map,
+    #map.leaflet-container,
+    #map.leaflet-grab,
+    #map.leaflet-drag-target,
+    #map.leaflet-interactive {
+      cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='14' r='11' fill='none' stroke='black' stroke-width='4'/%3E%3Ccircle cx='14' cy='14' r='3' fill='black'/%3E%3C/svg%3E") 14 14, crosshair !important;
+    }
+
+    .overlay {
+      position: fixed;
+      z-index: 1000;
+      left: 1rem;
+      top: 4.2rem;
+      width: min(30rem, calc(100vw - 2rem));
+    }
+
+    .floating-window {
+      position: fixed;
+      width: min(30rem, calc(100vw - 2rem));
+      pointer-events: auto;
+      z-index: 1210;
+    }
+
+    .prov-window {
+      width: min(52rem, calc(100vw - 2rem));
+    }
+
+    .floating-window.minimized .window-body {
+      display: none;
+    }
+
+    .window-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin: 0 0 0.45rem 0;
+      user-select: none;
+      cursor: move;
+    }
+
+    .window-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      margin: 0;
+    }
+
+    .window-actions {
+      display: flex;
+      gap: 0.35rem;
+    }
+
+    .icon-btn {
+      border: 1px solid #bcc6c9;
+      background: #ffffff;
+      border-radius: 0.45rem;
+      width: 1.7rem;
+      height: 1.7rem;
+      line-height: 1;
+      padding: 0;
+      cursor: pointer;
+      font-weight: 700;
+      color: #1c2d33;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.55rem;
+    }
+
+    .tab-btn {
+      border: 1px solid #bcc6c9;
+      background: #ffffff;
+      border-radius: 0.45rem;
+      padding: 0.28rem 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .tab-btn.active {
+      background: #005f73;
+      color: #ffffff;
+      border-color: #004f60;
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .sample-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.55rem;
+      align-items: center;
+    }
+
+    .sample-tab-btn {
+      border: 1px solid #bcc6c9;
+      background: #ffffff;
+      border-radius: 0.45rem;
+      padding: 0.28rem 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .sample-tab-btn.active {
+      background: #005f73;
+      color: #ffffff;
+      border-color: #004f60;
+    }
+
+    .sample-add-btn {
+      border: 1px dashed #7d9299;
+      background: #eff5f6;
+      color: #16353e;
+      border-radius: 0.45rem;
+      padding: 0.28rem 0.55rem;
+      font-size: 0.84rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.45rem;
+      margin-bottom: 0.45rem;
+    }
+
+    .field-grid input,
+    .field-grid textarea,
+    .field-grid select,
+    .csv-preview,
+    .bulk-input {
+      border: 1px solid #c9d0d2;
+      border-radius: 0.45rem;
+      padding: 0.38rem 0.45rem;
+      font: inherit;
+      font-size: 0.82rem;
+      background: #fff;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .field-grid label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 0.2rem;
+    }
+
+    .bulk-input {
+      min-height: 5.6rem;
+      resize: vertical;
+      margin-bottom: 0.45rem;
+    }
+
+    .csv-preview {
+      min-height: 9rem;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+      margin-bottom: 0.45rem;
+    }
+
+    .qr-wrap {
+      min-height: 228px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed #b8c7cb;
+      border-radius: 0.6rem;
+      background: #fbfdfe;
+      padding: 0.6rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .scan-window {
+      width: min(44rem, calc(100vw - 2rem));
+    }
+
+    .scan-subtitle {
+      margin: 0 0 0.45rem 0;
+      font-size: 0.84rem;
+      color: #4d5d62;
+      font-weight: 600;
+    }
+
+    .scan-video-wrap {
+      border: 1px solid var(--line);
+      border-radius: 0.7rem;
+      background: #0f1618;
+      overflow: hidden;
+      margin-bottom: 0.5rem;
+      min-height: 13rem;
+      display: grid;
+      place-items: center;
+    }
+
+    .scan-video {
+      width: 100%;
+      max-height: 20rem;
+      object-fit: cover;
+      background: #0f1618;
+    }
+
+    .scan-canvas {
+      display: none;
+    }
+
+    .scan-result {
+      border: 1px solid var(--line);
+      border-radius: 0.7rem;
+      padding: 0.55rem 0.65rem;
+      background: #fff;
+      margin-top: 0.45rem;
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-height: 10rem;
+      overflow: auto;
+    }
+
+    .scan-status {
+      margin-top: 0.35rem;
+      font-size: 0.8rem;
+      color: #35484d;
+    }
+
+    .scan-status.error {
+      color: #8a2a1f;
+    }
+
+    .scan-csv-wrap {
+      margin-top: 0.6rem;
+      border: 1px solid var(--line);
+      border-radius: 0.7rem;
+      background: #f7fafb;
+      padding: 0.55rem;
+    }
+
+    .scan-csv-title {
+      margin: 0 0 0.35rem 0;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #2a3f44;
+    }
+
+    .scan-csv-table-wrap {
+      max-height: 14rem;
+      overflow: auto;
+      border: 1px solid #d7e2e5;
+      border-radius: 0.45rem;
+      background: #fff;
+    }
+
+    .scan-csv-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+
+    .scan-csv-table th,
+    .scan-csv-table td {
+      border-bottom: 1px solid #ebf0f2;
+      border-right: 1px solid #ebf0f2;
+      padding: 0.3rem 0.42rem;
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+
+    .scan-csv-table th:last-child,
+    .scan-csv-table td:last-child {
+      border-right: none;
+    }
+
+    .scan-csv-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #edf4f6;
+      font-weight: 700;
+    }
+
+    .scan-csv-empty {
+      margin: 0;
+      font-size: 0.78rem;
+      color: #53666c;
+    }
+
+    .material-window {
+      width: min(58rem, calc(100vw - 2rem));
+    }
+
+    .material-main-tabs {
+      margin-bottom: 0.55rem;
+    }
+
+    .material-pane {
+      display: none;
+    }
+
+    .material-pane.active {
+      display: block;
+    }
+
+    .merge-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.55rem;
+      margin-top: 0.5rem;
+    }
+
+    .merge-card {
+      border: 1px solid var(--line);
+      border-radius: 0.7rem;
+      background: #f7fafb;
+      padding: 0.5rem;
+      min-height: 13rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+
+    .merge-card h3 {
+      margin: 0;
+      font-size: 0.82rem;
+      color: #2d4146;
+    }
+
+    .merge-raw {
+      width: 100%;
+      min-height: 7.8rem;
+      resize: vertical;
+      font-size: 0.74rem;
+      font-family: Consolas, "Courier New", monospace;
+      box-sizing: border-box;
+      border: 1px solid #d3e0e4;
+      border-radius: 0.45rem;
+      padding: 0.4rem;
+      background: #fff;
+    }
+
+    .merge-status {
+      font-size: 0.76rem;
+      color: #445a60;
+      min-height: 1.2rem;
+    }
+
+    .merge-status.error {
+      color: #8a2a1f;
+    }
+
+    @media (max-width: 1040px) {
+      .merge-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .qr-locked-field {
+      background: #e8edf0;
+      color: #607179;
+      border-color: #cad6db;
+      cursor: not-allowed;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 28px rgba(24, 39, 55, 0.14);
+      padding: 0.85rem 0.95rem;
+    }
+
+    h1 {
+      font-size: 1.05rem;
+      margin: 0 0 0.35rem 0;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    p {
+      color: var(--muted);
+      margin: 0 0 0.55rem 0;
+      font-size: 0.92rem;
+    }
+
+    .status,
+    .coord,
+    .legend,
+    .debug {
+      border: 1px solid var(--line);
+      border-radius: 0.75rem;
+      background: #fff;
+      padding: 0.55rem 0.65rem;
+      font-size: 0.86rem;
+      line-height: 1.35;
+      margin-bottom: 0.5rem;
+    }
+
+    .status {
+      background: #f7fbfc;
+    }
+
+    .mono {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.84rem;
+      color: #152129;
+    }
+
+    .legend {
+      max-height: 12rem;
+      overflow: auto;
+    }
+
+    .unit-info {
+      border: 1px solid var(--line);
+      border-radius: 0.75rem;
+      background: #fff;
+      padding: 0.55rem 0.65rem;
+      font-size: 0.86rem;
+      line-height: 1.35;
+      margin-bottom: 0.5rem;
+      max-height: 13rem;
+      overflow: auto;
+    }
+
+    .unit-row {
+      display: grid;
+      grid-template-columns: 7.8rem 1fr;
+      gap: 0.45rem;
+      margin-bottom: 0.18rem;
+    }
+
+    .bq-item {
+      border-top: 1px solid var(--line);
+      padding-top: 0.35rem;
+      margin-top: 0.35rem;
+    }
+
+    .unit-key {
+      color: var(--muted);
+    }
+
+    .click-target {
+      border-radius: 50%;
+      border: var(--target-ring, 4px) solid #0b0b0b;
+      background: #ffffff;
+      position: relative;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+
+    .click-target::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: var(--target-dot, 8px);
+      height: var(--target-dot, 8px);
+      margin-left: calc(var(--target-dot, 8px) / -2);
+      margin-top: calc(var(--target-dot, 8px) / -2);
+      border-radius: 50%;
+      background: #0b0b0b;
+    }
+
+    .prov-target {
+      border-radius: 50%;
+      border: 2px solid #0b0b0b;
+      background: #f2c14e;
+      box-sizing: border-box;
+      pointer-events: none;
+      position: relative;
+    }
+
+    .prov-target::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 5px;
+      height: 5px;
+      margin-left: -2.5px;
+      margin-top: -2.5px;
+      border-radius: 50%;
+      background: #0b0b0b;
+    }
+
+    .debug {
+      display: none;
+      max-height: 10rem;
+      overflow: auto;
+      background: #fbf7ee;
+    }
+
+    .legend ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .legend li {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-bottom: 0.2rem;
+    }
+
+    .swatch {
+      width: 0.95rem;
+      height: 0.95rem;
+      border-radius: 0.2rem;
+      border: 1px solid #7f8b90;
+      flex: 0 0 auto;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+
+    button {
+      border: 1px solid #bcc6c9;
+      background: #ffffff;
+      border-radius: 0.55rem;
+      padding: 0.38rem 0.56rem;
+      cursor: pointer;
+      color: #1c2d33;
+    }
+
+    button:hover {
+      background: #edf5f6;
+    }
+
+    .badge {
+      display: inline-block;
+      margin: 0 0 0.55rem 0;
+      font-size: 0.78rem;
+      border-radius: 99px;
+      padding: 0.22rem 0.5rem;
+      color: #12363e;
+      background: #cde6ea;
+      border: 1px solid #b8d6dc;
+      transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+    }
+
+    .badge.ok {
+      color: #0d4d23;
+      background: #d8f3e2;
+      border-color: #9fd4b2;
+    }
+
+    .badge.warn {
+      color: #71320f;
+      background: #ffe5d6;
+      border-color: #efc3a8;
+    }
+
+    .leaflet-tooltip,
+    .leaflet-popup-content {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.3;
+      width: 25ch;
+      max-width: 25ch;
+    }
+
+    @media (max-width: 700px) {
+      .topbar {
+        left: 0.65rem;
+        right: 0.65rem;
+        transform: none;
+        width: auto;
+        overflow-x: auto;
+        justify-content: flex-start;
+      }
+
+      .flow-btn {
+        min-width: 6.8rem;
+      }
+
+      .overlay {
+        left: 0.65rem;
+        top: 4.6rem;
+        width: calc(100vw - 1.3rem);
+      }
+
+      .floating-window {
+        width: calc(100vw - 1.3rem);
+      }
+
+      .field-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .window-header {
+        cursor: default;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="map" aria-label="Karta"></div>
+
+    <nav class="topbar" aria-label="Projektfloden">
+      <button class="flow-btn active" data-flow="A" type="button">A<span class="flow-tag">Forprojektering</span></button>
+      <button class="flow-btn" data-flow="B" type="button">B<span class="flow-tag">Projektering</span></button>
+      <button class="flow-btn" data-flow="C" type="button">C<span class="flow-tag">Utforande</span></button>
+      <button class="flow-btn" data-flow="D" type="button">D<span class="flow-tag">Materialbehandling</span></button>
+      <button class="flow-btn" data-flow="E" type="button">E<span class="flow-tag">Atervinning</span></button>
+    </nav>
+
+    <section class="workspace-ui" aria-live="polite">
+      <aside class="overlay floating-window" id="win-overview" style="left: 1rem; top: 4.2rem;" data-flow-window>
+        <section class="panel">
+          <div class="window-header" data-drag-handle>
+            <h2 class="window-title" id="flow-title">Skrivbordsstudie</h2>
+            <div class="window-actions">
+              <button class="icon-btn" type="button" data-window-toggle aria-label="Minimera fonstrer">-</button>
+            </div>
+          </div>
+          <div class="window-body">
+            <p id="flow-caption">Koordinater, geologisk yta och bergkvalitet for skrivbordsstudie.</p>
+            <span class="badge" id="window-badge">Kartfonster: ...</span>
+            <div class="status" id="status">Initierar...</div>
+            <div class="coord" id="coords">Klicka i kartan for koordinater.</div>
+
+            <div class="unit-info" id="unit-info-wrap">
+              <div style="margin-bottom:0.25rem;"><strong>Geologisk enhet</strong></div>
+              <div id="unit-info" class="mono">Klicka pa en geologisk yta i kartan.</div>
+            </div>
+
+            <div class="unit-info" id="bergkvalitet-info-wrap">
+              <div style="margin-bottom:0.25rem;"><strong>Bergkvalitet</strong></div>
+              <div id="bergkvalitet-info" class="mono">Klicka pa en geologisk yta for att kontrollera provresultat.</div>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="overlay floating-window" id="win-geology" style="left: 1rem; top: 21.2rem;" data-flow-window>
+        <section class="panel">
+          <div class="window-header" data-drag-handle>
+            <h2 class="window-title">Geologisk enhet</h2>
+            <div class="window-actions">
+              <button class="icon-btn" type="button" data-window-toggle aria-label="Minimera fonstrer">-</button>
+            </div>
+          </div>
+          <div class="window-body">
+            <div class="mono">Denna panel ar reserverad for senare steg.</div>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="overlay floating-window" id="win-bergkvalitet" style="left: 32rem; top: 21.2rem;" data-flow-window>
+        <section class="panel">
+          <div class="window-header" data-drag-handle>
+            <h2 class="window-title">Bergkvalitet</h2>
+            <div class="window-actions">
+              <button class="icon-btn" type="button" data-window-toggle aria-label="Minimera fonstrer">-</button>
+            </div>
+          </div>
+          <div class="window-body">
+            <div class="mono">Denna panel ar reserverad for senare steg.</div>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="overlay floating-window" id="win-flow-stage" style="left: 32rem; top: 4.2rem;" data-flow-window>
+        <section class="panel">
+          <div class="window-header" data-drag-handle>
+            <h2 class="window-title" id="stage-title">Stegstod</h2>
+            <div class="window-actions">
+              <button class="icon-btn" type="button" data-window-toggle aria-label="Minimera fonstrer">-</button>
+            </div>
+          </div>
+          <div class="window-body" id="stage-body" class="mono">
+            Innehall laddas for valt flode.
+          </div>
+        </section>
+      </aside>
+
+      <aside class="overlay floating-window" id="win-tools" style="left: 1rem; top: 37rem;" data-flow-window>
+        <section class="panel">
+          <div class="window-header" data-drag-handle>
+            <h2 class="window-title">Verktyg</h2>
+            <div class="window-actions">
+              <button class="icon-btn" type="button" data-window-toggle aria-label="Minimera fonstrer">-</button>
+            </div>
+          </div>
+          <div class="window-body">
+            <div class="debug" id="debug-wrap" aria-live="polite"></div>
+            <div class="toolbar">
+              <button id="reset-view" type="button">Aterstall vy</button>
+              <button id="reload-layer" type="button">Ladda om lagret</button>
+              <button id="toggle-debug" type="button">Felsok hal</button>
+              <a href="berggrund50k-250k/berggrund-50-250000-beskrivning.pdf" target="_blank" rel="noopener">Oppna PDF</a>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="overlay floating-window prov-window" id="win-provresultat" style="left: 32rem; top: 4.2rem;" data-flow-window>
+        <section class="panel">
+          <div class="window-header" data-drag-handle>
+            <h2 class="window-title">Provresultat</h2>
+            <div class="window-actions">
+              <button class="icon-btn" type="button" data-window-toggle aria-label="Minimera fonstrer">-</button>
+            </div>
+          </div>
+          <div class="window-body">
+            <p>Validera skrivbordsstudien med empiriska resultat och exportera till QR-kod i CSV-format.</p>
+
+            <div class="sample-tabs" id="prov-sample-tabs"></div>
+
+            <div class="toolbar" style="margin-bottom:0.5rem;">
+              <button id="prov-fill-from-map" type="button">Fyll koordinat fran senaste kartklick</button>
+              <button id="prov-remove-active" type="button">Ta bort aktiv flik</button>
+              <button id="prov-clear-all" type="button">Rensa alla flikar</button>
+              <span class="mono" id="prov-row-count">0 flikar</span>
+              <span class="mono" id="prov-marker-count">0 visade punkter</span>
+            </div>
+
+            <div id="prov-fields-grid" class="field-grid"></div>
+
+            <textarea id="prov-csv-preview" class="csv-preview" readonly></textarea>
+            <div class="toolbar">
+              <button id="prov-generate-qr" type="button">Skapa QR-kod</button>
+              <button id="prov-download-csv" type="button">Ladda ner CSV</button>
+            </div>
+            <div class="qr-wrap" id="prov-qr-wrap"><div class="mono">Ingen QR-kod skapad.</div></div>
+            <div class="mono" id="prov-qr-status">CSV redo nar du har lagt till minst en flik.</div>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="overlay floating-window scan-window" id="win-scan-qr" style="left: 1rem; top: 4.2rem;" data-flow-window>
+        <section class="panel">
+          <div class="window-header" data-drag-handle>
+            <h2 class="window-title">Hamta information fran Forprojektering</h2>
+            <div class="window-actions">
+              <button class="icon-btn" type="button" data-window-toggle aria-label="Minimera fonstrer">-</button>
+            </div>
+          </div>
+          <div class="window-body">
+            <p class="scan-subtitle">Se Kod BBB.31 i Kontrakt.</p>
+            <p>Importera QR-data via bild eller skanna direkt med webkamera.</p>
+
+            <div class="sample-tabs" id="qr-mode-tabs">
+              <button type="button" class="sample-tab-btn active" data-qr-mode="file">Hamta bild fran fil</button>
+              <button type="button" class="sample-tab-btn" data-qr-mode="camera">Skanna fran webkamera</button>
+            </div>
+
+            <div id="qr-mode-file" data-qr-pane="file">
+              <div class="toolbar" style="margin-top:0.5rem;">
+                <input id="qr-file-input" type="file" accept="image/*">
+              </div>
+              <div class="scan-status">Ladda upp bild med QR-kod fran skarmklipp eller fil.</div>
+            </div>
+
+            <div id="qr-mode-camera" data-qr-pane="camera" style="display:none;">
+              <div class="scan-video-wrap">
+                <video id="qr-video" class="scan-video" autoplay playsinline muted></video>
+              </div>
+              <div class="toolbar">
+                <button id="qr-start-camera" type="button">Starta webkamera</button>
+                <button id="qr-stop-camera" type="button">Stoppa webkamera</button>
+              </div>
+            </div>
+            <canvas id="qr-canvas" class="scan-canvas"></canvas>
+
+            <div id="qr-scan-status" class="scan-status">Skanner inaktiv.</div>
+            <div id="qr-scan-result" class="scan-result mono">Ingen kod skannad annu.</div>
+
+            <div id="c-prov-editor" class="scan-csv-wrap" style="display:none;">
+              <p class="scan-csv-title">Importerad provtabell</p>
+              <div id="c-prov-sample-tabs" class="sample-tabs"></div>
+              <div class="toolbar">
+                <button id="c-prov-remove-active" type="button">Ta bort aktiv flik</button>
+                <button id="c-prov-clear-all" type="button">Rensa importerad data</button>
+                <span class="mono" id="c-prov-row-count">0 flikar</span>
+              </div>
+              <div id="c-prov-fields-grid" class="field-grid"></div>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="overlay floating-window material-window" id="win-material" style="left: 1rem; top: 4.2rem;" data-flow-window>
+        <section class="panel">
+          <div class="window-header" data-drag-handle>
+            <h2 class="window-title">Materialbehandling</h2>
+            <div class="window-actions">
+              <button class="icon-btn" type="button" data-window-toggle aria-label="Minimera fonstrer">-</button>
+            </div>
+          </div>
+          <div class="window-body">
+            <div class="sample-tabs material-main-tabs" id="material-main-tabs">
+              <button type="button" class="sample-tab-btn active" data-material-tab="supplement">Kompletterande provtagning</button>
+              <button type="button" class="sample-tab-btn" data-material-tab="merge">Sla samman QR koder</button>
+            </div>
+
+            <section id="material-pane-supplement" class="material-pane active">
+              <p class="scan-subtitle">Kompletterande provtagning</p>
+              <p>Arbeta vidare pa samma satt som i Utforande och komplettera data efter behov.</p>
+
+              <div class="sample-tabs" id="d-qr-mode-tabs">
+                <button type="button" class="sample-tab-btn active" data-d-qr-mode="file">Hamta bild fran fil</button>
+                <button type="button" class="sample-tab-btn" data-d-qr-mode="camera">Skanna fran webkamera</button>
+              </div>
+
+              <div id="d-qr-mode-file" data-d-qr-pane="file">
+                <div class="toolbar" style="margin-top:0.5rem;">
+                  <input id="d-qr-file-input" type="file" accept="image/*">
+                </div>
+                <div class="scan-status">Ladda upp bild med QR-kod fran skarmklipp eller fil.</div>
+              </div>
+
+              <div id="d-qr-mode-camera" data-d-qr-pane="camera" style="display:none;">
+                <div class="scan-video-wrap">
+                  <video id="d-qr-video" class="scan-video" autoplay playsinline muted></video>
+                </div>
+                <div class="toolbar">
+                  <button id="d-qr-start-camera" type="button">Starta webkamera</button>
+                  <button id="d-qr-stop-camera" type="button">Stoppa webkamera</button>
+                </div>
+              </div>
+              <canvas id="d-qr-canvas" class="scan-canvas"></canvas>
+
+              <div id="d-qr-scan-status" class="scan-status">Skanner inaktiv.</div>
+              <div id="d-qr-scan-result" class="scan-result mono">Ingen kod skannad annu.</div>
+
+              <div id="d-prov-editor" class="scan-csv-wrap" style="display:none;">
+                <p class="scan-csv-title">Importerad provtabell</p>
+                <div id="d-prov-sample-tabs" class="sample-tabs"></div>
+                <div class="toolbar">
+                  <button id="d-prov-remove-active" type="button">Ta bort aktiv flik</button>
+                  <button id="d-prov-clear-all" type="button">Rensa importerad data</button>
+                  <span class="mono" id="d-prov-row-count">0 flikar</span>
+                </div>
+                <div id="d-prov-fields-grid" class="field-grid"></div>
+              </div>
+            </section>
+
+            <section id="material-pane-merge" class="material-pane">
+              <p class="scan-subtitle">Sla samman QR koder</p>
+              <p>Tabell 1 fylls ut med tomma vardesfalt fran tabell 2 och skapar en ny sammanfogad QR-kod.</p>
+
+              <div class="merge-grid">
+                <article class="merge-card">
+                  <h3>Infoga QR kod 1</h3>
+                  <input id="merge-file-a" type="file" accept="image/*">
+                  <textarea id="merge-raw-a" class="merge-raw" readonly placeholder="Ingen QR 1 inlast."></textarea>
+                  <div id="merge-status-a" class="merge-status">Vantar pa QR 1.</div>
+                </article>
+
+                <article class="merge-card">
+                  <h3>Infoga QR kod 2</h3>
+                  <input id="merge-file-b" type="file" accept="image/*">
+                  <textarea id="merge-raw-b" class="merge-raw" readonly placeholder="Ingen QR 2 inlast."></textarea>
+                  <div id="merge-status-b" class="merge-status">Vantar pa QR 2.</div>
+                </article>
+
+                <article class="merge-card">
+                  <h3>Summa (sammanslagen QR)</h3>
+                  <textarea id="merge-raw-out" class="merge-raw" readonly placeholder="Sammanslagen tabell visas har."></textarea>
+                  <button id="merge-generate-qr" type="button">Generera sammanfogad QR</button>
+                  <div id="merge-qr-wrap" class="qr-wrap"><div class="mono">Ingen sammanslagen QR skapad.</div></div>
+                  <div id="merge-status-out" class="merge-status">Ladda in bada QR-koder for att skapa summa.</div>
+                </article>
+              </div>
+            </section>
+          </div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.12.1/dist/proj4.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@4.2.8/dist/geopackage.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="src/prov-core.js"></script>
+
+  <script>
+    const qlrPath = "berggrund50k-250k/berggrund50k_250k.qlr";
+    const gpkgPath = "berggrund50k-250k/berggrund50k_250k.gpkg";
+    const tableName = "geologisk_enhet_yta";
+    const bergkvalitetGpkgPath = "bergkvalitet/bergkvalitet.gpkg";
+    const bergkvalitetTableName = "bergkvalitet_vag";
+    const maxFeatures = 32000;
+    const maxBergkvalitetPoints = 3500;
+    const queryPaddingFactor = 0.22;
+    const preloadHalfSizeMeters = 14000;
+
+    const startView = {
+      center: [62.0, 15.0],
+      zoom: 5
+    };
+
+    proj4.defs("EPSG:3006", "+proj=utm +zone=33 +ellps=GRS80 +units=m +no_defs");
+
+    const swerefLocalZones = [
+      { name: "SWEREF 99 12 00", code: "SWEREF99_1200", lon0: 12.0 },
+      { name: "SWEREF 99 13 30", code: "SWEREF99_1330", lon0: 13.5 },
+      { name: "SWEREF 99 14 15", code: "SWEREF99_1415", lon0: 14.25 },
+      { name: "SWEREF 99 15 00", code: "SWEREF99_1500", lon0: 15.0 },
+      { name: "SWEREF 99 15 45", code: "SWEREF99_1545", lon0: 15.75 },
+      { name: "SWEREF 99 16 30", code: "SWEREF99_1630", lon0: 16.5 },
+      { name: "SWEREF 99 17 15", code: "SWEREF99_1715", lon0: 17.25 },
+      { name: "SWEREF 99 18 00", code: "SWEREF99_1800", lon0: 18.0 },
+      { name: "SWEREF 99 18 45", code: "SWEREF99_1845", lon0: 18.75 },
+      { name: "SWEREF 99 20 15", code: "SWEREF99_2015", lon0: 20.25 },
+      { name: "SWEREF 99 21 45", code: "SWEREF99_2145", lon0: 21.75 },
+      { name: "SWEREF 99 23 15", code: "SWEREF99_2315", lon0: 23.25 }
+    ];
+
+    for (const zone of swerefLocalZones) {
+      proj4.defs(
+        zone.code,
+        `+proj=tmerc +lat_0=0 +lon_0=${zone.lon0} +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs`
+      );
+    }
+
+    function getNearestSwerefLocalZone(lon) {
+      let best = swerefLocalZones[0];
+      let bestDiff = Math.abs(lon - best.lon0);
+      for (let i = 1; i < swerefLocalZones.length; i += 1) {
+        const zone = swerefLocalZones[i];
+        const diff = Math.abs(lon - zone.lon0);
+        if (diff < bestDiff) {
+          best = zone;
+          bestDiff = diff;
+        }
+      }
+      return best;
+    }
+
+    function buildSwerefZoneListText(activeZoneName) {
+      return swerefLocalZones
+        .map((zone) => (zone.name === activeZoneName ? `[${zone.name}]` : zone.name.replace("SWEREF 99 ", "")))
+        .join(" | ");
+    }
+
+    function getClickMarkerSizePx() {
+      const base = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+      return Math.max(14, Math.round(base * 0.02));
+    }
+
+    function createClickMarkerIcon() {
+      const size = getClickMarkerSizePx();
+      const ring = Math.max(2, Math.round(size * 0.17));
+      const dot = Math.max(3, Math.round(size * 0.22));
+      return L.divIcon({
+        className: "",
+        html: `<div class="click-target" style="width:${size}px;height:${size}px;--target-ring:${ring}px;--target-dot:${dot}px;"></div>`,
+        iconSize: [size, size],
+        iconAnchor: [Math.round(size / 2), Math.round(size / 2)]
+      });
+    }
+
+    function createProvMarkerIcon() {
+      const size = 16;
+      return L.divIcon({
+        className: "",
+        html: `<div class="prov-target" style="width:${size}px;height:${size}px;"></div>`,
+        iconSize: [size, size],
+        iconAnchor: [Math.round(size / 2), Math.round(size / 2)]
+      });
+    }
+
+    function parseCoordNumber(value) {
+      if (value === null || value === undefined) {
+        return null;
+      }
+      const normalized = String(value).trim().replace(/\s+/g, "").replace(",", ".");
+      if (!normalized) {
+        return null;
+      }
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function clearProvPointLayer() {
+      if (provPointLayer && map.hasLayer(provPointLayer)) {
+        map.removeLayer(provPointLayer);
+      }
+      provPointLayer = null;
+      const markerCountEl = document.getElementById("prov-marker-count");
+      if (markerCountEl) {
+        markerCountEl.textContent = "0 visade punkter";
+      }
+    }
+
+    function convertSwerefLocalToLatLng(e, n, preferredZoneCode = "") {
+      const center = map.getCenter();
+      const bounds = map.getBounds();
+
+      const tryZoneCodes = preferredZoneCode
+        ? [preferredZoneCode, ...swerefLocalZones.map((z) => z.code).filter((code) => code !== preferredZoneCode)]
+        : swerefLocalZones.map((z) => z.code);
+
+      let best = null;
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (const zoneCode of tryZoneCodes) {
+        let lngLat;
+        try {
+          lngLat = proj4(zoneCode, "EPSG:4326", [e, n]);
+        } catch (_err) {
+          continue;
+        }
+
+        const lng = lngLat?.[0];
+        const lat = lngLat?.[1];
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+          continue;
+        }
+
+        const inView = bounds.contains([lat, lng]);
+        const dist = Math.hypot(lat - center.lat, lng - center.lng);
+        const score = dist + (inView ? -1000 : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          best = { lat, lng, zoneCode };
+        }
+      }
+
+      return best;
+    }
+
+    function updateClickMarker(latlng) {
+      if (!latlng) {
+        return;
+      }
+      const icon = createClickMarkerIcon();
+      if (!clickMarker) {
+        clickMarker = L.marker(latlng, {
+          icon,
+          keyboard: false,
+          interactive: false,
+          zIndexOffset: 1200
+        }).addTo(map);
+        return;
+      }
+      clickMarker.setLatLng(latlng);
+      clickMarker.setIcon(icon);
+    }
+
+    const map = L.map("map", { zoomControl: true }).setView(startView.center, startView.zoom);
+    const canvasRenderer = L.canvas({ padding: 0.4 });
+
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19,
+      attribution: "Tiles &copy; Esri"
+    }).addTo(map);
+
+    const statusEl = document.getElementById("status");
+    const coordsEl = document.getElementById("coords");
+    const unitInfoEl = document.getElementById("unit-info");
+    const bergkvalitetInfoEl = document.getElementById("bergkvalitet-info");
+    const windowBadgeEl = document.getElementById("window-badge");
+    const debugWrapEl = document.getElementById("debug-wrap");
+
+    let gpkgInstance = null;
+    let gpkgOpenPromise = null;
+    let bergkvalitetGpkgInstance = null;
+    let bergkvalitetGpkgOpenPromise = null;
+    let activeLayer = null;
+    let bergkvalitetPointLayer = null;
+    let provPointLayer = null;
+    let clickMarker = null;
+    let refreshToken = 0;
+    let activeQueryBox3006 = null;
+    let activeRenderedLimit = 0;
+    let activeSimplifyStep = 99;
+    let preloadedCollection = null;
+    let preloadedQueryBox3006 = null;
+    let preloadPromise = null;
+    let activeRenderMode = "normal";
+    let debugHolesEnabled = false;
+    let lastRenderDiagnostics = null;
+    let currentBergkvalitetPoints = [];
+    let selectedGeologyFeature = null;
+    let activeFlow = "A";
+    let floatingWindowZ = 1210;
+    let lastMapClickSweref = null;
+    let activeProvIndex = 0;
+    let qrStream = null;
+    let qrScanTimer = null;
+    let qrLastDecodedPayload = "";
+    let qrScanMode = "file";
+    let cActiveProvIndex = 0;
+    let dQrStream = null;
+    let dQrScanTimer = null;
+    let dQrLastDecodedPayload = "";
+    let dQrScanMode = "file";
+    let dActiveProvIndex = 0;
+    let mergePayloadA = "";
+    let mergePayloadB = "";
+    const provRows = [];
+    const cProvRows = [];
+    const cProvLockedByRow = [];
+    const dProvRows = [];
+    const dProvLockedByRow = [];
+    const qlrStyleBySymbolValue = new Map();
+
+    const {
+      PROV_COLUMNS,
+      ELEMENT_NAME_BY_SYMBOL,
+      parseDelimitedCsv,
+      unixDaysToIsoDate,
+      getProvKeyFromQrHeader,
+      normalizeQrValueByField,
+      buildProvRowsFromPayload,
+      mergeProvRowSets,
+      toIsoDate,
+      buildProvCsvFromRows,
+      createProvTemplate,
+      getProvFieldLabel,
+      getProvCsvHeaderLabel,
+      isoDateToUnixDays
+    } = window.ProvCore;
+
+    const FLOW_CONFIG = {
+      A: {
+        title: "Skrivbordsstudie",
+        caption: "Koordinater, geologisk yta och bergkvalitet for skrivbordsstudie.",
+        stageTitle: "Forprojektering",
+        stageHtml: [
+          "<strong>Aktivt fokus</strong><br>",
+          "- Faststall geologiskt utredningsomrade.<br>",
+          "- Kontrollera datakvallitet och tackning.<br>",
+          "- Formulera projektets malkriterier."
+        ].join(""),
+        windows: ["win-overview"]
+      },
+      B: {
+        title: "B - Projektering",
+        caption: "Planera geologiska val, urvalsstrategier och underlag.",
+        stageTitle: "Projektering",
+        stageHtml: [
+          "<strong>Aktivt fokus</strong><br>",
+          "- Vardera geologiska enheter i vald vy.<br>",
+          "- Knyt bergkvalitet till geologisk yta.<br>",
+          "- Forbered analys for genomforande."
+        ].join(""),
+        windows: ["win-provresultat"]
+      },
+      C: {
+        title: "C - Utforande",
+        caption: "Produktion i falt med uppfoljning och avvikelser.",
+        stageTitle: "Utforande",
+        stageHtml: [
+          "<strong>Nya mojligheter</strong><br>",
+          "- Logga genomforda delomraden.<br>",
+          "- Folj status per arbetsyta.<br>",
+          "- Hantera avvikelser i realtid."
+        ].join(""),
+        windows: ["win-scan-qr"]
+      },
+      D: {
+        title: "D - Materialbehandling",
+        caption: "Klassning, kvalitet och materialfloden i projektet.",
+        stageTitle: "Materialbehandling",
+        stageHtml: [
+          "<strong>Nya mojligheter</strong><br>",
+          "- Klassificera material per geologisk enhet.<br>",
+          "- Koppla provresultat till hanteringsbeslut.<br>",
+          "- Folj tillgang, mellanlagring och kvalitet."
+        ].join(""),
+        windows: ["win-material"]
+      },
+      E: {
+        title: "E - Atervinning",
+        caption: "Aterbruk, spårbarhet och slutlig aterrapportering.",
+        stageTitle: "Atervinning",
+        stageHtml: [
+          "<strong>Nya mojligheter</strong><br>",
+          "- Folj material till aterbruk eller deponi.<br>",
+          "- Sammanstall spårbarhetsunderlag.<br>",
+          "- Exportera slutrapport per delomrade."
+        ].join(""),
+        windows: ["win-overview", "win-flow-stage", "win-tools"]
+      }
+    };
+
+    function bringWindowToFront(windowEl) {
+      floatingWindowZ += 1;
+      windowEl.style.zIndex = String(floatingWindowZ);
+    }
+
+    function initFloatingWindows() {
+      const windows = [...document.querySelectorAll("[data-flow-window]")];
+      const isMobile = window.matchMedia("(max-width: 700px)").matches;
+
+      for (const winEl of windows) {
+        const header = winEl.querySelector("[data-drag-handle]");
+        if (!header) {
+          continue;
+        }
+
+        const toggleBtn = winEl.querySelector("[data-window-toggle]");
+        if (toggleBtn) {
+          toggleBtn.addEventListener("click", () => {
+            winEl.classList.toggle("minimized");
+            toggleBtn.textContent = winEl.classList.contains("minimized") ? "+" : "-";
+          });
+        }
+
+        if (isMobile) {
+          continue;
+        }
+
+        header.addEventListener("mousedown", (event) => {
+          const target = event.target;
+          if (target instanceof HTMLElement && target.closest("button, a")) {
+            return;
+          }
+
+          bringWindowToFront(winEl);
+          const rect = winEl.getBoundingClientRect();
+          const offsetX = event.clientX - rect.left;
+          const offsetY = event.clientY - rect.top;
+
+          const onMove = (moveEvent) => {
+            const nextLeft = Math.max(8, Math.min(window.innerWidth - rect.width - 8, moveEvent.clientX - offsetX));
+            const nextTop = Math.max(62, Math.min(window.innerHeight - 56, moveEvent.clientY - offsetY));
+            winEl.style.left = nextLeft + "px";
+            winEl.style.top = nextTop + "px";
+          };
+
+          const onUp = () => {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+          };
+
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", onUp);
+        });
+
+        winEl.addEventListener("mousedown", () => bringWindowToFront(winEl));
+      }
+    }
+
+    function setActiveFlow(flowId) {
+      const flow = FLOW_CONFIG[flowId] || null;
+
+      if (!flow) {
+        activeFlow = "";
+        stopQrCameraScan();
+        stopDQrCameraScan();
+        for (const winEl of document.querySelectorAll("[data-flow-window]")) {
+          winEl.style.display = "none";
+        }
+        for (const button of document.querySelectorAll(".flow-btn")) {
+          button.classList.remove("active");
+        }
+        return;
+      }
+
+      activeFlow = flowId;
+
+      if (activeFlow !== "C") {
+        stopQrCameraScan();
+      }
+      if (activeFlow !== "D") {
+        stopDQrCameraScan();
+      }
+
+      const titleEl = document.getElementById("flow-title");
+      const captionEl = document.getElementById("flow-caption");
+      const stageTitleEl = document.getElementById("stage-title");
+      const stageBodyEl = document.getElementById("stage-body");
+
+      if (titleEl) {
+        titleEl.textContent = flow.title;
+      }
+      if (captionEl) {
+        captionEl.textContent = flow.caption;
+      }
+      if (stageTitleEl) {
+        stageTitleEl.textContent = flow.stageTitle;
+      }
+      if (stageBodyEl) {
+        stageBodyEl.innerHTML = flow.stageHtml;
+      }
+
+      const winIds = new Set(flow.windows);
+      for (const winEl of document.querySelectorAll("[data-flow-window]")) {
+        winEl.style.display = winIds.has(winEl.id) ? "block" : "none";
+      }
+
+      for (const button of document.querySelectorAll(".flow-btn")) {
+        const isActive = button.getAttribute("data-flow") === activeFlow;
+        button.classList.toggle("active", isActive);
+      }
+    }
+
+    function initFlowMenu() {
+      for (const button of document.querySelectorAll(".flow-btn")) {
+        button.addEventListener("click", () => {
+          const flowId = button.getAttribute("data-flow") || "A";
+          setActiveFlow(flowId);
+        });
+      }
+      setActiveFlow("");
+    }
+
+    function setQrScanStatus(message, isError = false) {
+      const statusEl = document.getElementById("qr-scan-status");
+      if (!statusEl) {
+        return;
+      }
+      statusEl.textContent = message;
+      statusEl.classList.toggle("error", !!isError);
+    }
+
+    function setQrScanResult(text) {
+      const resultEl = document.getElementById("qr-scan-result");
+      if (!resultEl) {
+        return;
+      }
+      resultEl.textContent = text || "Ingen kod skannad annu.";
+    }
+
+    function escapeHtml(text) {
+      return String(text ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+
+    function setQrScanMode(mode) {
+      qrScanMode = mode === "camera" ? "camera" : "file";
+
+      for (const btn of document.querySelectorAll("#qr-mode-tabs [data-qr-mode]")) {
+        const isActive = btn.getAttribute("data-qr-mode") === qrScanMode;
+        btn.classList.toggle("active", isActive);
+      }
+
+      for (const pane of document.querySelectorAll("[data-qr-pane]")) {
+        const paneMode = pane.getAttribute("data-qr-pane");
+        pane.style.display = paneMode === qrScanMode ? "block" : "none";
+      }
+
+      if (qrScanMode !== "camera") {
+        stopQrCameraScan();
+      }
+    }
+
+    function ensureCProvState() {
+      if (!cProvRows.length) {
+        cProvRows.push(createProvTemplate({ Provtillfalle: "C-1" }));
+        cProvLockedByRow.push(new Set());
+      }
+      cActiveProvIndex = Math.max(0, Math.min(cActiveProvIndex, cProvRows.length - 1));
+    }
+
+    function getCProvLockedSet(index) {
+      if (!cProvLockedByRow[index]) {
+        cProvLockedByRow[index] = new Set();
+      }
+      return cProvLockedByRow[index];
+    }
+
+    function updateCProvRowCount() {
+      const rowCountEl = document.getElementById("c-prov-row-count");
+      if (rowCountEl) {
+        rowCountEl.textContent = `${cProvRows.length} flikar`;
+      }
+    }
+
+    function renderCProvSampleTabs() {
+      const tabsEl = document.getElementById("c-prov-sample-tabs");
+      if (!tabsEl) {
+        return;
+      }
+      ensureCProvState();
+
+      const tabButtons = cProvRows.map((row, idx) => {
+        const label = getProvRowLabel(row, idx);
+        return `<button type=\"button\" class=\"sample-tab-btn ${idx === cActiveProvIndex ? "active" : ""}\" data-c-prov-select=\"${idx}\">${escapeHtml(label)}</button>`;
+      }).join("");
+
+      tabsEl.innerHTML = `${tabButtons}<button type=\"button\" class=\"sample-add-btn\" id=\"c-prov-add-tab\">+</button>`;
+    }
+
+    function renderCProvFields() {
+      const fieldsEl = document.getElementById("c-prov-fields-grid");
+      if (!fieldsEl) {
+        return;
+      }
+      ensureCProvState();
+      const row = cProvRows[cActiveProvIndex];
+      const lockedSet = getCProvLockedSet(cActiveProvIndex);
+
+      fieldsEl.innerHTML = PROV_COLUMNS.map((col) => {
+        const value = escapeHtml(row[col] ?? "");
+        const inputType = col === "Datum" ? "date" : "text";
+        const locked = lockedSet.has(col);
+        const attrs = [
+          `id=\"c-prov-field-${escapeHtml(col)}\"`,
+          `data-c-prov-field=\"${escapeHtml(col)}\"`,
+          `type=\"${inputType}\"`,
+          `value=\"${value}\"`
+        ];
+        if (locked) {
+          attrs.push("readonly");
+          attrs.push('class=\"qr-locked-field\"');
+          attrs.push('title=\"Importerat fran QR och last\"');
+        }
+
+        return [
+          "<div>",
+          `<label for=\"c-prov-field-${escapeHtml(col)}\">${escapeHtml(getProvFieldLabel(col))}</label>`,
+          `<input ${attrs.join(" ")}>`,
+          "</div>"
+        ].join("");
+      }).join("");
+    }
+
+    function renderCProvComposer() {
+      const editorEl = document.getElementById("c-prov-editor");
+      if (editorEl) {
+        editorEl.style.display = cProvRows.length ? "block" : "none";
+      }
+      renderCProvSampleTabs();
+      renderCProvFields();
+      updateCProvRowCount();
+    }
+
+    function loadCProvRowsFromQrPayload(payload) {
+      const rows = parseDelimitedCsv(payload, ";");
+      if (rows.length < 2) {
+        return false;
+      }
+
+      const headers = rows[0].map((h) => String(h ?? ""));
+      const mappedKeys = headers.map((header) => getProvKeyFromQrHeader(header));
+      if (!mappedKeys.some((key) => !!key)) {
+        return false;
+      }
+
+      cProvRows.splice(0, cProvRows.length);
+      cProvLockedByRow.splice(0, cProvLockedByRow.length);
+
+      for (let i = 1; i < rows.length; i += 1) {
+        const srcRow = rows[i];
+        const row = createProvTemplate({});
+        const lockedSet = new Set();
+
+        for (let c = 0; c < mappedKeys.length; c += 1) {
+          const key = mappedKeys[c];
+          if (!key) {
+            continue;
+          }
+          const normalized = normalizeQrValueByField(key, srcRow[c]);
+          if (!normalized) {
+            continue;
+          }
+          row[key] = normalized;
+          lockedSet.add(key);
+        }
+
+        cProvRows.push(row);
+        cProvLockedByRow.push(lockedSet);
+      }
+
+      if (!cProvRows.length) {
+        return false;
+      }
+
+      cActiveProvIndex = 0;
+      return true;
+    }
+
+    function handleDecodedQrPayload(payload, statusMessage) {
+      const text = String(payload ?? "").trim();
+      if (!text) {
+        return;
+      }
+
+      if (text === qrLastDecodedPayload) {
+        setQrScanStatus(statusMessage);
+        return;
+      }
+
+      qrLastDecodedPayload = text;
+      setQrScanResult(text);
+
+      const didLoad = loadCProvRowsFromQrPayload(text);
+      if (didLoad) {
+        renderCProvComposer();
+        setQrScanStatus(`${statusMessage} Importerad data ar last i gra falt.`);
+        return;
+      }
+
+      const editorEl = document.getElementById("c-prov-editor");
+      if (editorEl) {
+        editorEl.style.display = "none";
+      }
+      setQrScanStatus("QR-kod lases men innehaller inte igenkannbar prov-CSV.", true);
+    }
+
+    function stopQrCameraScan() {
+      if (qrScanTimer) {
+        clearInterval(qrScanTimer);
+        qrScanTimer = null;
+      }
+
+      if (qrStream) {
+        for (const track of qrStream.getTracks()) {
+          track.stop();
+        }
+        qrStream = null;
+      }
+
+      const videoEl = document.getElementById("qr-video");
+      if (videoEl) {
+        videoEl.srcObject = null;
+      }
+      setQrScanStatus("Skanner inaktiv.");
+    }
+
+    function decodeQrFromCanvas(canvasEl) {
+      if (!canvasEl || !window.jsQR) {
+        return "";
+      }
+
+      const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+      if (!ctx) {
+        return "";
+      }
+      const imageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
+      const detected = window.jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "attemptBoth"
+      });
+      return detected?.data || "";
+    }
+
+    async function startQrCameraScan() {
+      const videoEl = document.getElementById("qr-video");
+      const canvasEl = document.getElementById("qr-canvas");
+      if (!videoEl || !canvasEl) {
+        return;
+      }
+
+      stopQrCameraScan();
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setQrScanStatus("Webkamera stodds inte i denna webblasare.", true);
+        return;
+      }
+
+      try {
+        qrStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment"
+          },
+          audio: false
+        });
+        videoEl.srcObject = qrStream;
+        await videoEl.play();
+        setQrScanStatus("Webkamera aktiv. Haller pa att skanna...");
+
+        qrScanTimer = setInterval(() => {
+          if (!videoEl.videoWidth || !videoEl.videoHeight) {
+            return;
+          }
+
+          canvasEl.width = videoEl.videoWidth;
+          canvasEl.height = videoEl.videoHeight;
+          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+          if (!ctx) {
+            return;
+          }
+          ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+
+          const data = decodeQrFromCanvas(canvasEl);
+          if (data) {
+            handleDecodedQrPayload(data, "QR-kod hittad via webkamera.");
+          }
+        }, 220);
+      } catch (_err) {
+        setQrScanStatus("Kunde inte starta webkamera. Kontrollera tillstand.", true);
+      }
+    }
+
+    function decodeQrFromUploadedFile(file) {
+      const canvasEl = document.getElementById("qr-canvas");
+      if (!canvasEl) {
+        return;
+      }
+
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        try {
+          canvasEl.width = img.naturalWidth || img.width;
+          canvasEl.height = img.naturalHeight || img.height;
+          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+          if (!ctx) {
+            setQrScanStatus("Kunde inte lasa bild for QR-skanning.", true);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
+          const data = decodeQrFromCanvas(canvasEl);
+          if (data) {
+            handleDecodedQrPayload(data, "QR-kod hittad i uppladdad bild.");
+          } else {
+            setQrScanStatus("Ingen QR-kod hittades i vald bild.", true);
+          }
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        setQrScanStatus("Kunde inte lasa vald bild.", true);
+      };
+      img.src = objectUrl;
+    }
+
+    function initQrScanWindow() {
+      const modeTabs = document.getElementById("qr-mode-tabs");
+      const startBtn = document.getElementById("qr-start-camera");
+      const stopBtn = document.getElementById("qr-stop-camera");
+      const fileInput = document.getElementById("qr-file-input");
+      const cTabsEl = document.getElementById("c-prov-sample-tabs");
+      const cFieldsEl = document.getElementById("c-prov-fields-grid");
+      const cRemoveBtn = document.getElementById("c-prov-remove-active");
+      const cClearBtn = document.getElementById("c-prov-clear-all");
+
+      setQrScanMode("file");
+
+      if (modeTabs) {
+        modeTabs.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
+          const mode = target.getAttribute("data-qr-mode");
+          if (!mode) {
+            return;
+          }
+          setQrScanMode(mode);
+        });
+      }
+
+      if (startBtn) {
+        startBtn.addEventListener("click", () => {
+          setQrScanMode("camera");
+          startQrCameraScan();
+        });
+      }
+
+      if (stopBtn) {
+        stopBtn.addEventListener("click", () => {
+          stopQrCameraScan();
+        });
+      }
+
+      if (fileInput) {
+        fileInput.addEventListener("change", () => {
+          const file = fileInput.files?.[0];
+          if (!file) {
+            return;
+          }
+          setQrScanMode("file");
+          decodeQrFromUploadedFile(file);
+          fileInput.value = "";
+        });
+      }
+
+      if (cTabsEl) {
+        cTabsEl.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
+
+          if (target.id === "c-prov-add-tab") {
+            const nextId = String(30000 + cProvRows.length + 1);
+            cProvRows.push(createProvTemplate({ Provtillfalle: nextId }));
+            cProvLockedByRow.push(new Set());
+            cActiveProvIndex = cProvRows.length - 1;
+            renderCProvComposer();
+            return;
+          }
+
+          const selectRaw = target.getAttribute("data-c-prov-select");
+          if (selectRaw === null) {
+            return;
+          }
+          const idx = Number(selectRaw);
+          if (!Number.isFinite(idx) || !cProvRows[idx]) {
+            return;
+          }
+          cActiveProvIndex = idx;
+          renderCProvComposer();
+        });
+      }
+
+      if (cFieldsEl) {
+        cFieldsEl.addEventListener("input", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement)) {
+            return;
+          }
+          const field = target.getAttribute("data-c-prov-field");
+          if (!field || !cProvRows[cActiveProvIndex]) {
+            return;
+          }
+          const lockedSet = getCProvLockedSet(cActiveProvIndex);
+          if (lockedSet.has(field)) {
+            target.value = cProvRows[cActiveProvIndex][field] ?? "";
+            return;
+          }
+
+          if (field === "Datum") {
+            const normalized = toIsoDate(target.value);
+            cProvRows[cActiveProvIndex][field] = normalized || target.value;
+          } else {
+            cProvRows[cActiveProvIndex][field] = target.value;
+          }
+          renderCProvSampleTabs();
+        });
+
+        cFieldsEl.addEventListener("change", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement)) {
+            return;
+          }
+          const field = target.getAttribute("data-c-prov-field");
+          if (field !== "Datum" || !cProvRows[cActiveProvIndex]) {
+            return;
+          }
+          const lockedSet = getCProvLockedSet(cActiveProvIndex);
+          if (lockedSet.has(field)) {
+            target.value = cProvRows[cActiveProvIndex][field] ?? "";
+            return;
+          }
+          const normalized = toIsoDate(target.value);
+          cProvRows[cActiveProvIndex][field] = normalized;
+          target.value = normalized;
+        });
+      }
+
+      if (cRemoveBtn) {
+        cRemoveBtn.addEventListener("click", () => {
+          if (!cProvRows.length) {
+            return;
+          }
+          cProvRows.splice(cActiveProvIndex, 1);
+          cProvLockedByRow.splice(cActiveProvIndex, 1);
+          if (!cProvRows.length) {
+            const editorEl = document.getElementById("c-prov-editor");
+            if (editorEl) {
+              editorEl.style.display = "none";
+            }
+            cActiveProvIndex = 0;
+            return;
+          }
+          cActiveProvIndex = Math.max(0, Math.min(cActiveProvIndex, cProvRows.length - 1));
+          renderCProvComposer();
+        });
+      }
+
+      if (cClearBtn) {
+        cClearBtn.addEventListener("click", () => {
+          cProvRows.splice(0, cProvRows.length);
+          cProvLockedByRow.splice(0, cProvLockedByRow.length);
+          cActiveProvIndex = 0;
+          qrLastDecodedPayload = "";
+          const editorEl = document.getElementById("c-prov-editor");
+          if (editorEl) {
+            editorEl.style.display = "none";
+          }
+          setQrScanResult("Ingen kod skannad annu.");
+          setQrScanStatus("Importerad data rensad.");
+        });
+      }
+    }
+
+    function setMaterialTab(tabId) {
+      const activeTab = tabId === "merge" ? "merge" : "supplement";
+
+      for (const btn of document.querySelectorAll("#material-main-tabs [data-material-tab]")) {
+        const isActive = btn.getAttribute("data-material-tab") === activeTab;
+        btn.classList.toggle("active", isActive);
+      }
+
+      const supplementPane = document.getElementById("material-pane-supplement");
+      const mergePane = document.getElementById("material-pane-merge");
+      if (supplementPane) {
+        supplementPane.classList.toggle("active", activeTab === "supplement");
+      }
+      if (mergePane) {
+        mergePane.classList.toggle("active", activeTab === "merge");
+      }
+
+      if (activeTab !== "supplement") {
+        stopDQrCameraScan();
+      }
+    }
+
+    function setDQrScanMode(mode) {
+      dQrScanMode = mode === "camera" ? "camera" : "file";
+
+      for (const btn of document.querySelectorAll("#d-qr-mode-tabs [data-d-qr-mode]")) {
+        const isActive = btn.getAttribute("data-d-qr-mode") === dQrScanMode;
+        btn.classList.toggle("active", isActive);
+      }
+
+      for (const pane of document.querySelectorAll("[data-d-qr-pane]")) {
+        const paneMode = pane.getAttribute("data-d-qr-pane");
+        pane.style.display = paneMode === dQrScanMode ? "block" : "none";
+      }
+
+      if (dQrScanMode !== "camera") {
+        stopDQrCameraScan();
+      }
+    }
+
+    function setDQrScanStatus(message, isError = false) {
+      const statusEl = document.getElementById("d-qr-scan-status");
+      if (!statusEl) {
+        return;
+      }
+      statusEl.textContent = message;
+      statusEl.classList.toggle("error", !!isError);
+    }
+
+    function setDQrScanResult(text) {
+      const resultEl = document.getElementById("d-qr-scan-result");
+      if (!resultEl) {
+        return;
+      }
+      resultEl.textContent = text || "Ingen kod skannad annu.";
+    }
+
+    function stopDQrCameraScan() {
+      if (dQrScanTimer) {
+        clearInterval(dQrScanTimer);
+        dQrScanTimer = null;
+      }
+
+      if (dQrStream) {
+        for (const track of dQrStream.getTracks()) {
+          track.stop();
+        }
+        dQrStream = null;
+      }
+
+      const videoEl = document.getElementById("d-qr-video");
+      if (videoEl) {
+        videoEl.srcObject = null;
+      }
+      setDQrScanStatus("Skanner inaktiv.");
+    }
+
+    async function startDQrCameraScan() {
+      const videoEl = document.getElementById("d-qr-video");
+      const canvasEl = document.getElementById("d-qr-canvas");
+      if (!videoEl || !canvasEl) {
+        return;
+      }
+
+      stopDQrCameraScan();
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setDQrScanStatus("Webkamera stodds inte i denna webblasare.", true);
+        return;
+      }
+
+      try {
+        dQrStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment"
+          },
+          audio: false
+        });
+        videoEl.srcObject = dQrStream;
+        await videoEl.play();
+        setDQrScanStatus("Webkamera aktiv. Haller pa att skanna...");
+
+        dQrScanTimer = setInterval(() => {
+          if (!videoEl.videoWidth || !videoEl.videoHeight) {
+            return;
+          }
+
+          canvasEl.width = videoEl.videoWidth;
+          canvasEl.height = videoEl.videoHeight;
+          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+          if (!ctx) {
+            return;
+          }
+          ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+
+          const data = decodeQrFromCanvas(canvasEl);
+          if (data) {
+            handleDecodedDQrPayload(data, "QR-kod hittad via webkamera.");
+          }
+        }, 220);
+      } catch (_err) {
+        setDQrScanStatus("Kunde inte starta webkamera. Kontrollera tillstand.", true);
+      }
+    }
+
+    function decodeDQrFromUploadedFile(file) {
+      const canvasEl = document.getElementById("d-qr-canvas");
+      if (!canvasEl) {
+        return;
+      }
+
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        try {
+          canvasEl.width = img.naturalWidth || img.width;
+          canvasEl.height = img.naturalHeight || img.height;
+          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+          if (!ctx) {
+            setDQrScanStatus("Kunde inte lasa bild for QR-skanning.", true);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
+          const data = decodeQrFromCanvas(canvasEl);
+          if (data) {
+            handleDecodedDQrPayload(data, "QR-kod hittad i uppladdad bild.");
+          } else {
+            setDQrScanStatus("Ingen QR-kod hittades i vald bild.", true);
+          }
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        setDQrScanStatus("Kunde inte lasa vald bild.", true);
+      };
+      img.src = objectUrl;
+    }
+
+    function ensureDProvState() {
+      if (!dProvRows.length) {
+        dProvRows.push(createProvTemplate({ Provtillfalle: "D-1" }));
+        dProvLockedByRow.push(new Set());
+      }
+      dActiveProvIndex = Math.max(0, Math.min(dActiveProvIndex, dProvRows.length - 1));
+    }
+
+    function getDProvLockedSet(index) {
+      if (!dProvLockedByRow[index]) {
+        dProvLockedByRow[index] = new Set();
+      }
+      return dProvLockedByRow[index];
+    }
+
+    function updateDProvRowCount() {
+      const rowCountEl = document.getElementById("d-prov-row-count");
+      if (rowCountEl) {
+        rowCountEl.textContent = `${dProvRows.length} flikar`;
+      }
+    }
+
+    function renderDProvSampleTabs() {
+      const tabsEl = document.getElementById("d-prov-sample-tabs");
+      if (!tabsEl) {
+        return;
+      }
+      ensureDProvState();
+
+      const tabButtons = dProvRows.map((row, idx) => {
+        const label = getProvRowLabel(row, idx);
+        return `<button type=\"button\" class=\"sample-tab-btn ${idx === dActiveProvIndex ? "active" : ""}\" data-d-prov-select=\"${idx}\">${escapeHtml(label)}</button>`;
+      }).join("");
+
+      tabsEl.innerHTML = `${tabButtons}<button type=\"button\" class=\"sample-add-btn\" id=\"d-prov-add-tab\">+</button>`;
+    }
+
+    function renderDProvFields() {
+      const fieldsEl = document.getElementById("d-prov-fields-grid");
+      if (!fieldsEl) {
+        return;
+      }
+      ensureDProvState();
+      const row = dProvRows[dActiveProvIndex];
+      const lockedSet = getDProvLockedSet(dActiveProvIndex);
+
+      fieldsEl.innerHTML = PROV_COLUMNS.map((col) => {
+        const value = escapeHtml(row[col] ?? "");
+        const inputType = col === "Datum" ? "date" : "text";
+        const locked = lockedSet.has(col);
+        const attrs = [
+          `id=\"d-prov-field-${escapeHtml(col)}\"`,
+          `data-d-prov-field=\"${escapeHtml(col)}\"`,
+          `type=\"${inputType}\"`,
+          `value=\"${value}\"`
+        ];
+        if (locked) {
+          attrs.push("readonly");
+          attrs.push('class=\"qr-locked-field\"');
+          attrs.push('title=\"Importerat fran QR och last\"');
+        }
+
+        return [
+          "<div>",
+          `<label for=\"d-prov-field-${escapeHtml(col)}\">${escapeHtml(getProvFieldLabel(col))}</label>`,
+          `<input ${attrs.join(" ")}>`,
+          "</div>"
+        ].join("");
+      }).join("");
+    }
+
+    function renderDProvComposer() {
+      const editorEl = document.getElementById("d-prov-editor");
+      if (editorEl) {
+        editorEl.style.display = dProvRows.length ? "block" : "none";
+      }
+      renderDProvSampleTabs();
+      renderDProvFields();
+      updateDProvRowCount();
+    }
+
+    function loadDProvRowsFromQrPayload(payload) {
+      const rows = parseDelimitedCsv(payload, ";");
+      if (rows.length < 2) {
+        return false;
+      }
+
+      const headers = rows[0].map((h) => String(h ?? ""));
+      const mappedKeys = headers.map((header) => getProvKeyFromQrHeader(header));
+      if (!mappedKeys.some((key) => !!key)) {
+        return false;
+      }
+
+      dProvRows.splice(0, dProvRows.length);
+      dProvLockedByRow.splice(0, dProvLockedByRow.length);
+
+      for (let i = 1; i < rows.length; i += 1) {
+        const srcRow = rows[i];
+        const row = createProvTemplate({});
+        const lockedSet = new Set();
+
+        for (let c = 0; c < mappedKeys.length; c += 1) {
+          const key = mappedKeys[c];
+          if (!key) {
+            continue;
+          }
+          const normalized = normalizeQrValueByField(key, srcRow[c]);
+          if (!normalized) {
+            continue;
+          }
+          row[key] = normalized;
+          lockedSet.add(key);
+        }
+
+        dProvRows.push(row);
+        dProvLockedByRow.push(lockedSet);
+      }
+
+      if (!dProvRows.length) {
+        return false;
+      }
+
+      dActiveProvIndex = 0;
+      return true;
+    }
+
+    function handleDecodedDQrPayload(payload, statusMessage) {
+      const text = String(payload ?? "").trim();
+      if (!text) {
+        return;
+      }
+
+      if (text === dQrLastDecodedPayload) {
+        setDQrScanStatus(statusMessage);
+        return;
+      }
+
+      dQrLastDecodedPayload = text;
+      setDQrScanResult(text);
+
+      const didLoad = loadDProvRowsFromQrPayload(text);
+      if (didLoad) {
+        renderDProvComposer();
+        setDQrScanStatus(`${statusMessage} Importerad data ar last i gra falt.`);
+        return;
+      }
+
+      const editorEl = document.getElementById("d-prov-editor");
+      if (editorEl) {
+        editorEl.style.display = "none";
+      }
+      setDQrScanStatus("QR-kod lases men innehaller inte igenkannbar prov-CSV.", true);
+    }
+
+    function setMergeStatus(slot, message, isError = false) {
+      const el = document.getElementById(`merge-status-${slot}`);
+      if (!el) {
+        return;
+      }
+      el.textContent = message;
+      el.classList.toggle("error", !!isError);
+    }
+
+    function renderMergedQrPayload(csvText) {
+      const qrWrap = document.getElementById("merge-qr-wrap");
+      if (!qrWrap) {
+        return;
+      }
+      qrWrap.innerHTML = "";
+
+      if (!csvText.trim()) {
+        qrWrap.innerHTML = '<div class="mono">Ingen sammanslagen QR skapad.</div>';
+        return;
+      }
+
+      if (!window.QRCode) {
+        qrWrap.innerHTML = '<div class="mono">QR-bibliotek saknas i lasaren.</div>';
+        return;
+      }
+
+      try {
+        new window.QRCode(qrWrap, {
+          text: csvText,
+          width: 210,
+          height: 210,
+          correctLevel: window.QRCode.CorrectLevel.M
+        });
+      } catch (_err) {
+        qrWrap.innerHTML = '<div class="mono">Kunde inte skapa sammanslagen QR.</div>';
+      }
+    }
+
+    function updateMergedPayloadView() {
+      const outEl = document.getElementById("merge-raw-out");
+      if (!outEl) {
+        return;
+      }
+
+      if (!mergePayloadA.trim() || !mergePayloadB.trim()) {
+        outEl.value = "";
+        setMergeStatus("out", "Ladda in bada QR-koder for att skapa summa.");
+        renderMergedQrPayload("");
+        return;
+      }
+
+      const rowsA = buildProvRowsFromPayload(mergePayloadA);
+      const rowsB = buildProvRowsFromPayload(mergePayloadB);
+
+      if (!rowsA.length || !rowsB.length) {
+        outEl.value = "";
+        setMergeStatus("out", "En av QR-koderna innehaller inte igenkannbar prov-CSV.", true);
+        renderMergedQrPayload("");
+        return;
+      }
+
+      const mergedRows = mergeProvRowSets(rowsA, rowsB);
+      if (!mergedRows.length) {
+        outEl.value = "";
+        setMergeStatus("out", "Ingen sammanfogad data kunde skapas.", true);
+        renderMergedQrPayload("");
+        return;
+      }
+
+      const mergedCsv = buildProvCsvFromRows(mergedRows, { compactDateForQr: true });
+      outEl.value = mergedCsv;
+      setMergeStatus("out", `Summa skapad fran ${mergedRows.length} flikar.`);
+      renderMergedQrPayload(mergedCsv);
+    }
+
+    function decodeMergeQrFromFile(slot, file) {
+      const canvasEl = document.getElementById("d-qr-canvas");
+      if (!canvasEl) {
+        return;
+      }
+
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        try {
+          canvasEl.width = img.naturalWidth || img.width;
+          canvasEl.height = img.naturalHeight || img.height;
+          const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+          if (!ctx) {
+            setMergeStatus(slot, "Kunde inte lasa bild for QR-skanning.", true);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
+          const data = decodeQrFromCanvas(canvasEl);
+          if (!data) {
+            setMergeStatus(slot, "Ingen QR-kod hittades i vald bild.", true);
+            return;
+          }
+
+          if (slot === "a") {
+            mergePayloadA = String(data);
+          } else {
+            mergePayloadB = String(data);
+          }
+
+          const rawEl = document.getElementById(slot === "a" ? "merge-raw-a" : "merge-raw-b");
+          if (rawEl) {
+            rawEl.value = String(data);
+          }
+          setMergeStatus(slot, "QR-kod inlast.");
+          updateMergedPayloadView();
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        setMergeStatus(slot, "Kunde inte lasa vald bild.", true);
+      };
+      img.src = objectUrl;
+    }
+
+    function initMaterialWindow() {
+      const materialTabs = document.getElementById("material-main-tabs");
+      const dModeTabs = document.getElementById("d-qr-mode-tabs");
+      const dStartBtn = document.getElementById("d-qr-start-camera");
+      const dStopBtn = document.getElementById("d-qr-stop-camera");
+      const dFileInput = document.getElementById("d-qr-file-input");
+      const dTabsEl = document.getElementById("d-prov-sample-tabs");
+      const dFieldsEl = document.getElementById("d-prov-fields-grid");
+      const dRemoveBtn = document.getElementById("d-prov-remove-active");
+      const dClearBtn = document.getElementById("d-prov-clear-all");
+      const mergeFileA = document.getElementById("merge-file-a");
+      const mergeFileB = document.getElementById("merge-file-b");
+      const mergeBtn = document.getElementById("merge-generate-qr");
+
+      setMaterialTab("supplement");
+      setDQrScanMode("file");
+
+      if (materialTabs) {
+        materialTabs.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
+          const tab = target.getAttribute("data-material-tab");
+          if (!tab) {
+            return;
+          }
+          setMaterialTab(tab);
+        });
+      }
+
+      if (dModeTabs) {
+        dModeTabs.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
+          const mode = target.getAttribute("data-d-qr-mode");
+          if (!mode) {
+            return;
+          }
+          setDQrScanMode(mode);
+        });
+      }
+
+      if (dStartBtn) {
+        dStartBtn.addEventListener("click", () => {
+          setDQrScanMode("camera");
+          startDQrCameraScan();
+        });
+      }
+
+      if (dStopBtn) {
+        dStopBtn.addEventListener("click", () => {
+          stopDQrCameraScan();
+        });
+      }
+
+      if (dFileInput) {
+        dFileInput.addEventListener("change", () => {
+          const file = dFileInput.files?.[0];
+          if (!file) {
+            return;
+          }
+          setDQrScanMode("file");
+          decodeDQrFromUploadedFile(file);
+          dFileInput.value = "";
+        });
+      }
+
+      if (dTabsEl) {
+        dTabsEl.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
+
+          if (target.id === "d-prov-add-tab") {
+            const nextId = String(40000 + dProvRows.length + 1);
+            dProvRows.push(createProvTemplate({ Provtillfalle: nextId }));
+            dProvLockedByRow.push(new Set());
+            dActiveProvIndex = dProvRows.length - 1;
+            renderDProvComposer();
+            return;
+          }
+
+          const selectRaw = target.getAttribute("data-d-prov-select");
+          if (selectRaw === null) {
+            return;
+          }
+          const idx = Number(selectRaw);
+          if (!Number.isFinite(idx) || !dProvRows[idx]) {
+            return;
+          }
+          dActiveProvIndex = idx;
+          renderDProvComposer();
+        });
+      }
+
+      if (dFieldsEl) {
+        dFieldsEl.addEventListener("input", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement)) {
+            return;
+          }
+          const field = target.getAttribute("data-d-prov-field");
+          if (!field || !dProvRows[dActiveProvIndex]) {
+            return;
+          }
+          const lockedSet = getDProvLockedSet(dActiveProvIndex);
+          if (lockedSet.has(field)) {
+            target.value = dProvRows[dActiveProvIndex][field] ?? "";
+            return;
+          }
+
+          if (field === "Datum") {
+            const normalized = toIsoDate(target.value);
+            dProvRows[dActiveProvIndex][field] = normalized || target.value;
+          } else {
+            dProvRows[dActiveProvIndex][field] = target.value;
+          }
+          renderDProvSampleTabs();
+        });
+
+        dFieldsEl.addEventListener("change", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement)) {
+            return;
+          }
+          const field = target.getAttribute("data-d-prov-field");
+          if (field !== "Datum" || !dProvRows[dActiveProvIndex]) {
+            return;
+          }
+          const lockedSet = getDProvLockedSet(dActiveProvIndex);
+          if (lockedSet.has(field)) {
+            target.value = dProvRows[dActiveProvIndex][field] ?? "";
+            return;
+          }
+          const normalized = toIsoDate(target.value);
+          dProvRows[dActiveProvIndex][field] = normalized;
+          target.value = normalized;
+        });
+      }
+
+      if (dRemoveBtn) {
+        dRemoveBtn.addEventListener("click", () => {
+          if (!dProvRows.length) {
+            return;
+          }
+          dProvRows.splice(dActiveProvIndex, 1);
+          dProvLockedByRow.splice(dActiveProvIndex, 1);
+          if (!dProvRows.length) {
+            const editorEl = document.getElementById("d-prov-editor");
+            if (editorEl) {
+              editorEl.style.display = "none";
+            }
+            dActiveProvIndex = 0;
+            return;
+          }
+          dActiveProvIndex = Math.max(0, Math.min(dActiveProvIndex, dProvRows.length - 1));
+          renderDProvComposer();
+        });
+      }
+
+      if (dClearBtn) {
+        dClearBtn.addEventListener("click", () => {
+          dProvRows.splice(0, dProvRows.length);
+          dProvLockedByRow.splice(0, dProvLockedByRow.length);
+          dActiveProvIndex = 0;
+          dQrLastDecodedPayload = "";
+          const editorEl = document.getElementById("d-prov-editor");
+          if (editorEl) {
+            editorEl.style.display = "none";
+          }
+          setDQrScanResult("Ingen kod skannad annu.");
+          setDQrScanStatus("Importerad data rensad.");
+        });
+      }
+
+      if (mergeFileA) {
+        mergeFileA.addEventListener("change", () => {
+          const file = mergeFileA.files?.[0];
+          if (!file) {
+            return;
+          }
+          decodeMergeQrFromFile("a", file);
+          mergeFileA.value = "";
+        });
+      }
+
+      if (mergeFileB) {
+        mergeFileB.addEventListener("change", () => {
+          const file = mergeFileB.files?.[0];
+          if (!file) {
+            return;
+          }
+          decodeMergeQrFromFile("b", file);
+          mergeFileB.value = "";
+        });
+      }
+
+      if (mergeBtn) {
+        mergeBtn.addEventListener("click", () => {
+          updateMergedPayloadView();
+        });
+      }
+    }
+
+    function buildProvCsv(options = {}) {
+      return buildProvCsvFromRows(provRows, options);
+    }
+
+    function updateProvCsvPreview() {
+      const previewEl = document.getElementById("prov-csv-preview");
+      const rowCountEl = document.getElementById("prov-row-count");
+      if (previewEl) {
+        previewEl.value = buildProvCsv({ compactDateForQr: false });
+      }
+      if (rowCountEl) {
+        rowCountEl.textContent = `${provRows.length} flikar`;
+      }
+    }
+
+    function ensureProvState() {
+      if (!provRows.length) {
+        const now = new Date();
+        const yyyy = now.getUTCFullYear();
+        const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(now.getUTCDate()).padStart(2, "0");
+        provRows.push(createProvTemplate({ Provtillfalle: "20605", Datum: `${yyyy}-${mm}-${dd}` }));
+      }
+      activeProvIndex = Math.max(0, Math.min(activeProvIndex, provRows.length - 1));
+    }
+
+    function getProvRowLabel(row, idx) {
+      const provId = String(row?.Provtillfalle ?? "").trim();
+      return provId ? `Prov ${provId}` : `Prov ${idx + 1}`;
+    }
+
+    function renderProvSampleTabs() {
+      const tabsEl = document.getElementById("prov-sample-tabs");
+      if (!tabsEl) {
+        return;
+      }
+
+      ensureProvState();
+
+      const tabButtons = provRows.map((row, idx) => {
+        const label = getProvRowLabel(row, idx);
+        return `<button type="button" class="sample-tab-btn ${idx === activeProvIndex ? "active" : ""}" data-prov-select="${idx}">${escapeHtml(label)}</button>`;
+      }).join("");
+
+      tabsEl.innerHTML = `${tabButtons}<button type="button" class="sample-add-btn" id="prov-add-tab">+</button>`;
+    }
+
+    function renderProvFields() {
+      const fieldsEl = document.getElementById("prov-fields-grid");
+      if (!fieldsEl) {
+        return;
+      }
+
+      ensureProvState();
+      const row = provRows[activeProvIndex];
+      fieldsEl.innerHTML = PROV_COLUMNS.map((col) => {
+        const value = escapeHtml(row[col] ?? "");
+        const inputType = col === "Datum" ? "date" : "text";
+        return [
+          '<div>',
+          `<label for="prov-field-${escapeHtml(col)}">${escapeHtml(getProvFieldLabel(col))}</label>`,
+          `<input id="prov-field-${escapeHtml(col)}" data-prov-field="${escapeHtml(col)}" type="${inputType}" value="${value}">`,
+          '</div>'
+        ].join("");
+      }).join("");
+    }
+
+    function renderProvComposer() {
+      renderProvSampleTabs();
+      renderProvFields();
+      updateProvCsvPreview();
+      renderProvPointLayer();
+    }
+
+    function renderProvPointLayer() {
+      clearProvPointLayer();
+      if (!provRows.length) {
+        return;
+      }
+
+      const layer = L.layerGroup();
+      let visibleCount = 0;
+
+      for (let i = 0; i < provRows.length; i += 1) {
+        const row = provRows[i];
+        const n = parseCoordNumber(row?.SWEREF_N);
+        const e = parseCoordNumber(row?.SWEREF_E);
+        if (n === null || e === null) {
+          continue;
+        }
+
+        try {
+          const converted = convertSwerefLocalToLatLng(e, n, row?._zoneCode || "");
+          if (!converted) {
+            continue;
+          }
+          const lng = converted.lng;
+          const lat = converted.lat;
+
+          const marker = L.circleMarker([lat, lng], {
+            renderer: canvasRenderer,
+            radius: 7,
+            color: "#0b0b0b",
+            fillColor: "#f2c14e",
+            fillOpacity: 0.95,
+            weight: 2,
+            pane: "markerPane",
+            keyboard: false
+          });
+          marker.bindTooltip(getProvRowLabel(row, i), {
+            direction: "top",
+            sticky: true,
+            opacity: 0.96
+          });
+          marker.on("click", () => {
+            activeProvIndex = i;
+            renderProvComposer();
+          });
+          layer.addLayer(marker);
+          visibleCount += 1;
+        } catch (_err) {
+          // Ignore invalid coordinate conversion.
+        }
+      }
+
+      if (layer.getLayers().length) {
+        provPointLayer = layer.addTo(map);
+      }
+
+      const markerCountEl = document.getElementById("prov-marker-count");
+      if (markerCountEl) {
+        markerCountEl.textContent = `${visibleCount} visade punkter`;
+      }
+    }
+
+    function initProvresultatWindow() {
+      const tabsEl = document.getElementById("prov-sample-tabs");
+      const fieldsEl = document.getElementById("prov-fields-grid");
+      const fillMapBtn = document.getElementById("prov-fill-from-map");
+      const removeActiveBtn = document.getElementById("prov-remove-active");
+      const clearBtn = document.getElementById("prov-clear-all");
+      const generateQrBtn = document.getElementById("prov-generate-qr");
+      const downloadCsvBtn = document.getElementById("prov-download-csv");
+
+      ensureProvState();
+
+      if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+          provRows.splice(0, provRows.length);
+          activeProvIndex = 0;
+          const qrWrap = document.getElementById("prov-qr-wrap");
+          const qrStatus = document.getElementById("prov-qr-status");
+          if (qrWrap) {
+            qrWrap.innerHTML = '<div class="mono">Ingen QR-kod skapad.</div>';
+          }
+          if (qrStatus) {
+            qrStatus.textContent = "CSV redo nar du har lagt till minst en flik.";
+          }
+          ensureProvState();
+          renderProvComposer();
+        });
+      }
+
+      if (tabsEl) {
+        tabsEl.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
+
+          if (target.id === "prov-add-tab") {
+            const nextId = String(20000 + provRows.length + 1);
+            provRows.push(createProvTemplate({ Provtillfalle: nextId }));
+            activeProvIndex = provRows.length - 1;
+            renderProvComposer();
+            return;
+          }
+
+          const selectRaw = target.getAttribute("data-prov-select");
+          if (selectRaw === null) {
+            return;
+          }
+          const idx = Number(selectRaw);
+          if (!Number.isFinite(idx) || !provRows[idx]) {
+            return;
+          }
+          activeProvIndex = idx;
+          renderProvComposer();
+        });
+      }
+
+      if (fieldsEl) {
+        fieldsEl.addEventListener("input", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement)) {
+            return;
+          }
+          const field = target.getAttribute("data-prov-field");
+          if (!field || !provRows[activeProvIndex]) {
+            return;
+          }
+          if (field === "Datum") {
+            const normalized = toIsoDate(target.value);
+            provRows[activeProvIndex][field] = normalized || target.value;
+          } else {
+            provRows[activeProvIndex][field] = target.value;
+          }
+          renderProvSampleTabs();
+          updateProvCsvPreview();
+          renderProvPointLayer();
+        });
+
+        fieldsEl.addEventListener("change", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement)) {
+            return;
+          }
+          const field = target.getAttribute("data-prov-field");
+          if (field !== "Datum" || !provRows[activeProvIndex]) {
+            return;
+          }
+          const normalized = toIsoDate(target.value);
+          provRows[activeProvIndex][field] = normalized;
+          target.value = normalized;
+          updateProvCsvPreview();
+        });
+      }
+
+      if (fillMapBtn) {
+        fillMapBtn.addEventListener("click", () => {
+          if (!lastMapClickSweref || !provRows[activeProvIndex]) {
+            return;
+          }
+          provRows[activeProvIndex].SWEREF_N = String(lastMapClickSweref.n);
+          provRows[activeProvIndex].SWEREF_E = String(lastMapClickSweref.e);
+          provRows[activeProvIndex]._zoneCode = String(lastMapClickSweref.zoneCode || "");
+          renderProvComposer();
+        });
+      }
+
+      if (removeActiveBtn) {
+        removeActiveBtn.addEventListener("click", () => {
+          if (!provRows.length) {
+            return;
+          }
+          provRows.splice(activeProvIndex, 1);
+          if (!provRows.length) {
+            provRows.push(createProvTemplate({ Provtillfalle: "20605" }));
+            activeProvIndex = 0;
+          } else {
+            activeProvIndex = Math.max(0, Math.min(activeProvIndex, provRows.length - 1));
+          }
+          renderProvComposer();
+        });
+      }
+
+      if (generateQrBtn) {
+        generateQrBtn.addEventListener("click", () => {
+          const qrWrap = document.getElementById("prov-qr-wrap");
+          const qrStatus = document.getElementById("prov-qr-status");
+          if (!qrWrap || !qrStatus) {
+            return;
+          }
+
+          const csv = buildProvCsv();
+          const csvBytes = new TextEncoder().encode(csv).length;
+          const qrCsv = buildProvCsv({ compactDateForQr: true });
+          const qrCsvBytes = new TextEncoder().encode(qrCsv).length;
+          qrWrap.innerHTML = "";
+
+          if (!provRows.length) {
+            qrWrap.innerHTML = '<div class="mono">Lagg till minst en flik for QR-kod.</div>';
+            qrStatus.textContent = "Inga flikar att exportera.";
+            return;
+          }
+
+          if (!window.QRCode) {
+            qrWrap.innerHTML = '<div class="mono">QR-bibliotek saknas i lasaren.</div>';
+            qrStatus.textContent = "Kunde inte skapa QR-kod.";
+            return;
+          }
+
+          try {
+            // QR codes have practical size limits; warn on larger payloads.
+            if (qrCsvBytes > 2800) {
+              qrStatus.textContent = `QR-data ar ${qrCsvBytes} bytes (datum sparas som dagar sedan 1970). QR kan bli svarlast, overvaga farre flikar.`;
+            } else {
+              qrStatus.textContent = `QR skapad fran ${provRows.length} flikar (${qrCsvBytes} bytes). Datum lagras som dagar sedan 1970.`;
+            }
+
+            new window.QRCode(qrWrap, {
+              text: qrCsv,
+              width: 210,
+              height: 210,
+              correctLevel: window.QRCode.CorrectLevel.M
+            });
+          } catch (_err) {
+            qrWrap.innerHTML = '<div class="mono">Kunde inte skapa QR-kod for nuvarande data.</div>';
+            qrStatus.textContent = "Fel vid QR-generering.";
+          }
+        });
+      }
+
+      if (downloadCsvBtn) {
+        downloadCsvBtn.addEventListener("click", () => {
+          if (!provRows.length) {
+            return;
+          }
+          const csv = buildProvCsv({ compactDateForQr: false });
+          const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "provresultat.csv";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+      }
+
+      renderProvComposer();
+    }
+
+    const RENDER_INTERVALS = [
+      { level: 1, minSpanKm: 2600, limit: 800, simplify: 14, stride: 12, padding: 0.05, coarseStroke: true },
+      { level: 2, minSpanKm: 2000, limit: 1200, simplify: 13, stride: 10, padding: 0.06, coarseStroke: true },
+      { level: 3, minSpanKm: 1500, limit: 1700, simplify: 12, stride: 8, padding: 0.07, coarseStroke: true },
+      { level: 4, minSpanKm: 1100, limit: 2400, simplify: 11, stride: 6, padding: 0.08, coarseStroke: true },
+      { level: 5, minSpanKm: 800, limit: 3400, simplify: 10, stride: 5, padding: 0.10, coarseStroke: true },
+      { level: 6, minSpanKm: 550, limit: 4800, simplify: 8, stride: 4, padding: 0.12, coarseStroke: true },
+      { level: 7, minSpanKm: 350, limit: 7000, simplify: 7, stride: 3, padding: 0.14, coarseStroke: false },
+      { level: 8, minSpanKm: 200, limit: 9800, simplify: 5, stride: 2, padding: 0.17, coarseStroke: false },
+      { level: 9, minSpanKm: 90, limit: 14000, simplify: 3, stride: 1, padding: 0.20, coarseStroke: false },
+      { level: 10, minSpanKm: 0, limit: 21000, simplify: 2, stride: 1, padding: 0.24, coarseStroke: false }
+    ];
+
+    const GEO_UNIT_STANDARD_FIELDS = [
+      "id", "geo_enh_tx", "lito_n_tx", "tekt_n_tx", "bergart_tx", "b_roll_tx", "b_prop_tx", "farg_tx", "min_ss_tx", "kem_ss_tx", "str_tx_tx",
+      "partik1_tx", "partik2_tx", "partik3_tx", "partik4_tx", "partik5_tx", "partik6_tx", "handel1_tx", "handel2_tx", "handel3_tx",
+      "u_berg1_tx", "u_berg2_tx", "u_berg3_tx", "u_berg4_tx", "u_berg5_tx", "u_berg6_tx", "u_berg7_tx", "u_berg8_tx",
+      "kartering", "karttyp_tx", "karttyp", "geof_und", "rek_skala", "avslut_ar", "prod_bet", "rev_dat", "symbol", "c", "m", "y", "k", "etikett",
+      "porfyrisk", "hydrot_omv", "geo_enh", "lito_n", "tekt_n", "bergart", "b_roll", "b_prop", "f_farg", "t_farg",
+      "min_ss1", "min_ss2", "min_ss3", "kem_ss1", "kem_ss2", "kem_ss3", "str_tx1", "str_tx2", "str_tx3", "str_tx4", "str_tx5", "str_tx6", "str_tx7",
+      "p_typ1", "p_stl1", "p_form1", "nmin1", "k_prop1", "p_typ2", "p_stl2", "p_form2", "nmin2", "k_prop2", "p_typ3", "p_stl3", "p_form3", "nmin3", "k_prop3",
+      "p_typ4", "p_stl4", "p_form4", "nmin4", "k_prop4", "p_typ5", "p_stl5", "p_form5", "nmin5", "k_prop5", "p_typ6", "p_stl6", "p_form6", "nmin6", "k_prop6",
+      "proc1", "miljo1", "yn_ald1", "al_ald1", "metam1", "omvand1", "protol1", "proc2", "miljo2", "yn_ald2", "al_ald2", "metam2", "omvand2", "protol2",
+      "proc3", "miljo3", "yn_ald3", "al_ald3", "metam3", "omvand3", "protol3",
+      "u_berg1", "u_roll1", "u_prop1", "u_berg2", "u_roll2", "u_prop2", "u_berg3", "u_roll3", "u_prop3", "u_berg4", "u_roll4", "u_prop4",
+      "u_berg5", "u_roll5", "u_prop5", "u_berg6", "u_roll6", "u_prop6", "u_berg7", "u_roll7", "u_prop7", "u_berg8", "u_roll8", "u_prop8",
+      "objectid", "geom_area", "geom_length"
+    ];
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function colorFromValue(value) {
+      let seed = Number(value);
+      if (!Number.isFinite(seed)) {
+        seed = String(value || "").split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+      }
+      const hue = ((seed * 37) % 360 + 360) % 360;
+      return `hsl(${hue} 78% 62%)`;
+    }
+
+    function classCode(feature) {
+      const p = feature?.properties || {};
+      return p.symbol ?? p.geo_enh ?? p.bergart ?? p.id ?? "okand";
+    }
+
+    function parseQlrRgb(optionValue) {
+      if (!optionValue) {
+        return null;
+      }
+      const m = String(optionValue).match(/^(\d{1,3}),(\d{1,3}),(\d{1,3}),/);
+      if (!m) {
+        return null;
+      }
+      const r = Math.max(0, Math.min(255, Number(m[1])));
+      const g = Math.max(0, Math.min(255, Number(m[2])));
+      const b = Math.max(0, Math.min(255, Number(m[3])));
+      if ([r, g, b].some((n) => Number.isNaN(n))) {
+        return null;
+      }
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function parseQlrSymbolStylesFromText(qlrText) {
+      const idNeedle = "<id>Geologisk_enhet_yta_c6a19df8_013f_4a13_92c1_e73b191fd271</id>";
+      const idPos = qlrText.indexOf(idNeedle);
+      if (idPos < 0) {
+        return;
+      }
+
+      const maplayerStart = qlrText.lastIndexOf("<maplayer", idPos);
+      const maplayerEnd = qlrText.indexOf("</maplayer>", idPos);
+      if (maplayerStart < 0 || maplayerEnd < 0) {
+        return;
+      }
+
+      const layerChunk = qlrText.slice(maplayerStart, maplayerEnd);
+      const rendererPos = layerChunk.indexOf("<renderer-v2");
+      if (rendererPos < 0) {
+        return;
+      }
+      const rendererChunk = layerChunk.slice(rendererPos);
+
+      const symbolColorByName = new Map();
+      const symbolBlockRegex = /<symbol\b[^>]*name="([^"]*)"[\s\S]*?<\/symbol>/g;
+      let symbolMatch;
+      while ((symbolMatch = symbolBlockRegex.exec(rendererChunk)) !== null) {
+        const symbolName = String(symbolMatch[1] || "");
+        if (!symbolName) {
+          continue;
+        }
+        const symbolBlock = symbolMatch[0];
+        const fillBlockMatch = symbolBlock.match(/<layer\b[^>]*class="SimpleFill"[\s\S]*?<\/layer>/);
+        if (!fillBlockMatch) {
+          continue;
+        }
+        const colorAttrMatch = fillBlockMatch[0].match(/<Option\b[^>]*name="color"[^>]*value="([^"]+)"/)
+          || fillBlockMatch[0].match(/<Option\b[^>]*value="([^"]+)"[^>]*name="color"/);
+        if (!colorAttrMatch) {
+          continue;
+        }
+        const rgb = parseQlrRgb(colorAttrMatch[1]);
+        if (rgb) {
+          symbolColorByName.set(symbolName, rgb);
+        }
+      }
+
+      const extractAttr = (text, name) => {
+        const m = text.match(new RegExp(name + '="([^"]*)"'));
+        return m ? m[1] : "";
+      };
+
+      qlrStyleBySymbolValue.clear();
+      const categoryRegex = /<category\b[^>]*\/>/g;
+      let categoryMatch;
+      while ((categoryMatch = categoryRegex.exec(rendererChunk)) !== null) {
+        const nodeText = categoryMatch[0];
+        const value = extractAttr(nodeText, "value");
+        const symbolRef = extractAttr(nodeText, "symbol");
+        const label = extractAttr(nodeText, "label") || value;
+        if (!value) {
+          continue;
+        }
+        qlrStyleBySymbolValue.set(value, {
+          label,
+          color: symbolColorByName.get(symbolRef) || null
+        });
+      }
+    }
+
+    function getLegendKey(feature) {
+      return String(classCode(feature));
+    }
+
+    function getLegendLabel(key) {
+      const styled = qlrStyleBySymbolValue.get(String(key));
+      return styled?.label || String(key);
+    }
+
+    function cmykToRgb(c, m, y, k) {
+      const cc = Math.max(0, Math.min(100, Number(c))) / 100;
+      const mm = Math.max(0, Math.min(100, Number(m))) / 100;
+      const yy = Math.max(0, Math.min(100, Number(y))) / 100;
+      const kk = Math.max(0, Math.min(100, Number(k))) / 100;
+      if ([cc, mm, yy, kk].some((n) => Number.isNaN(n))) {
+        return null;
+      }
+      const r = Math.round(255 * (1 - cc) * (1 - kk));
+      const g = Math.round(255 * (1 - mm) * (1 - kk));
+      const b = Math.round(255 * (1 - yy) * (1 - kk));
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function getFeatureFillColor(feature) {
+      const p = feature?.properties || {};
+      const cmykColor = cmykToRgb(p.c, p.m, p.y, p.k);
+      if (cmykColor) {
+        return cmykColor;
+      }
+
+      const key = getLegendKey(feature);
+      const styled = qlrStyleBySymbolValue.get(key);
+      return styled?.color || colorFromValue(key);
+    }
+
+    function styleForFeature(feature) {
+      const coarse = activeRenderMode === "coarse";
+      return {
+        color: coarse ? "#00000000" : "#3f4a4f",
+        weight: coarse ? 0 : 0.35,
+        opacity: coarse ? 0 : 0.85,
+        fillColor: getFeatureFillColor(feature),
+        fillOpacity: coarse ? 0.44 : 0.5
+      };
+    }
+
+    function normalizeCollection(raw) {
+      if (Array.isArray(raw)) {
+        return { type: "FeatureCollection", features: raw };
+      }
+      if (raw && Array.isArray(raw.features)) {
+        return raw;
+      }
+      return { type: "FeatureCollection", features: [] };
+    }
+
+    function geometryNeedsTransform(geometry) {
+      if (!geometry || !geometry.coordinates) {
+        return false;
+      }
+
+      const stack = [geometry.coordinates];
+      while (stack.length > 0) {
+        const node = stack.pop();
+        if (!Array.isArray(node)) {
+          continue;
+        }
+
+        if (node.length >= 2 && typeof node[0] === "number" && typeof node[1] === "number") {
+          return Math.abs(node[0]) > 180 || Math.abs(node[1]) > 90;
+        }
+
+        for (let i = 0; i < node.length; i += 1) {
+          stack.push(node[i]);
+        }
+      }
+
+      return false;
+    }
+
+    function transformCoordinatesRecursive(coords) {
+      if (!Array.isArray(coords)) {
+        return coords;
+      }
+
+      if (coords.length >= 2 && typeof coords[0] === "number" && typeof coords[1] === "number") {
+        const transformed = proj4("EPSG:3006", "EPSG:4326", [coords[0], coords[1]]);
+        return [transformed[0], transformed[1]];
+      }
+
+      return coords.map((part) => transformCoordinatesRecursive(part));
+    }
+
+    function toWgs84Collection(collection) {
+      const normalized = normalizeCollection(collection);
+      if (!normalized.features.length) {
+        return normalized;
+      }
+
+      if (!geometryNeedsTransform(normalized.features[0].geometry)) {
+        return normalized;
+      }
+
+      return {
+        type: "FeatureCollection",
+        features: normalized.features.map((feature) => {
+          if (!feature.geometry || !feature.geometry.coordinates) {
+            return feature;
+          }
+          return {
+            ...feature,
+            geometry: {
+              ...feature.geometry,
+              coordinates: transformCoordinatesRecursive(feature.geometry.coordinates)
+            }
+          };
+        })
+      };
+    }
+
+    function getWindowMeters() {
+      const b = map.getBounds();
+      const sw = b.getSouthWest();
+      const ne = b.getNorthEast();
+      const sw3006 = proj4("EPSG:4326", "EPSG:3006", [sw.lng, sw.lat]);
+      const ne3006 = proj4("EPSG:4326", "EPSG:3006", [ne.lng, ne.lat]);
+      return {
+        width: Math.abs(ne3006[0] - sw3006[0]),
+        height: Math.abs(ne3006[1] - sw3006[1]),
+        minX: Math.min(sw3006[0], ne3006[0]),
+        maxX: Math.max(sw3006[0], ne3006[0]),
+        minY: Math.min(sw3006[1], ne3006[1]),
+        maxY: Math.max(sw3006[1], ne3006[1])
+      };
+    }
+
+    function expandBbox(bbox, factor) {
+      const dx = (bbox.maxX - bbox.minX) * factor;
+      const dy = (bbox.maxY - bbox.minY) * factor;
+      return {
+        minX: bbox.minX - dx,
+        minY: bbox.minY - dy,
+        maxX: bbox.maxX + dx,
+        maxY: bbox.maxY + dy
+      };
+    }
+
+    function getAdaptiveQueryPaddingFactor(win) {
+      return getRenderProfile(win).padding || queryPaddingFactor;
+    }
+
+    function bboxContains(outer, inner) {
+      if (!outer || !inner) {
+        return false;
+      }
+      return outer.minX <= inner.minX
+        && outer.minY <= inner.minY
+        && outer.maxX >= inner.maxX
+        && outer.maxY >= inner.maxY;
+    }
+
+    function clamp01(v) {
+      return Math.max(0, Math.min(1, v));
+    }
+
+    function getZoomProgress() {
+      const min = map.getMinZoom();
+      const max = map.getMaxZoom();
+      const span = Math.max(1, max - min);
+      return clamp01((map.getZoom() - min) / span);
+    }
+
+    function getRenderProfile(win) {
+      const spanKm = Math.max(win.width, win.height) / 1000;
+      const zoomProgress = getZoomProgress();
+      const profile = RENDER_INTERVALS.find((item) => spanKm >= item.minSpanKm) || RENDER_INTERVALS[RENDER_INTERVALS.length - 1];
+
+      let limit = profile.limit;
+      if (zoomProgress > 0.75 && profile.level >= 8) {
+        limit = Math.round(limit * 1.18);
+      } else if (zoomProgress > 0.6 && profile.level >= 7) {
+        limit = Math.round(limit * 1.08);
+      }
+
+      return {
+        ...profile,
+        limit: Math.max(500, Math.min(maxFeatures, limit)),
+        spanKm
+      };
+    }
+
+    function getDynamicFeatureLimit(win) {
+      return getRenderProfile(win).limit;
+    }
+
+    function getSimplifyStep(win, aggressive) {
+      const profile = getRenderProfile(win);
+      const adjusted = profile.simplify + (aggressive ? 1 : 0);
+      return Math.max(1, Math.min(16, adjusted));
+    }
+
+    function getQuickFeatureStride(win) {
+      return getRenderProfile(win).stride;
+    }
+
+    function thinCollectionByStride(collection, stride, preserveCoverage = false) {
+      if (!collection || !Array.isArray(collection.features) || stride <= 1 || collection.features.length < 50) {
+        return collection;
+      }
+
+      if (preserveCoverage) {
+        const buckets = new Map();
+        for (const feature of collection.features) {
+          const g = feature?.geometry;
+          const c = g?.coordinates;
+          if (!c) {
+            continue;
+          }
+
+          let x = null;
+          let y = null;
+          if (g.type === "Polygon" && Array.isArray(c[0]) && Array.isArray(c[0][0])) {
+            x = c[0][0][0];
+            y = c[0][0][1];
+          } else if (g.type === "MultiPolygon" && Array.isArray(c[0]) && Array.isArray(c[0][0]) && Array.isArray(c[0][0][0])) {
+            x = c[0][0][0][0];
+            y = c[0][0][0][1];
+          }
+
+          if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            continue;
+          }
+
+          const bx = Math.floor(x * 4);
+          const by = Math.floor(y * 4);
+          const key = bx + ":" + by;
+          if (!buckets.has(key)) {
+            buckets.set(key, []);
+          }
+          buckets.get(key).push(feature);
+        }
+
+        const keptCoverage = [];
+        for (const arr of buckets.values()) {
+          for (let i = 0; i < arr.length; i += stride) {
+            keptCoverage.push(arr[i]);
+          }
+        }
+
+        if (keptCoverage.length >= 50) {
+          return {
+            type: "FeatureCollection",
+            features: keptCoverage
+          };
+        }
+      }
+
+      const kept = [];
+      for (let i = 0; i < collection.features.length; i += 1) {
+        if (i % stride === 0) {
+          kept.push(collection.features[i]);
+        }
+      }
+      if (!kept.length) {
+        return collection;
+      }
+      return {
+        type: "FeatureCollection",
+        features: kept
+      };
+    }
+
+    function countRenderableFeatures(collection) {
+      if (!collection || !Array.isArray(collection.features) || !collection.features.length) {
+        return 0;
+      }
+
+      let count = 0;
+      for (const feature of collection.features) {
+        const geometry = feature?.geometry;
+        if (!geometry || !geometry.type || !geometry.coordinates) {
+          continue;
+        }
+
+        if (geometry.type === "Polygon") {
+          const rings = geometry.coordinates;
+          if (Array.isArray(rings) && rings.some((ring) => Array.isArray(ring) && ring.length >= 4)) {
+            count += 1;
+          }
+          continue;
+        }
+
+        if (geometry.type === "MultiPolygon") {
+          const polys = geometry.coordinates;
+          if (Array.isArray(polys) && polys.some((poly) => Array.isArray(poly) && poly.some((ring) => Array.isArray(ring) && ring.length >= 4))) {
+            count += 1;
+          }
+          continue;
+        }
+
+        if (geometry.type === "LineString") {
+          if (Array.isArray(geometry.coordinates) && geometry.coordinates.length >= 2) {
+            count += 1;
+          }
+          continue;
+        }
+
+        if (geometry.type === "MultiLineString") {
+          const lines = geometry.coordinates;
+          if (Array.isArray(lines) && lines.some((line) => Array.isArray(line) && line.length >= 2)) {
+            count += 1;
+          }
+          continue;
+        }
+
+        if (geometry.type === "Point" || geometry.type === "MultiPoint") {
+          count += 1;
+        }
+      }
+
+      return count;
+    }
+
+    function getPolygonValidityStats(collection) {
+      const out = {
+        polygonLike: 0,
+        invalid: 0
+      };
+      if (!collection || !Array.isArray(collection.features) || !collection.features.length) {
+        return out;
+      }
+
+      for (const feature of collection.features) {
+        const geometry = feature?.geometry;
+        if (!geometry || !geometry.type || !geometry.coordinates) {
+          continue;
+        }
+
+        if (geometry.type === "Polygon") {
+          out.polygonLike += 1;
+          const rings = geometry.coordinates;
+          if (!Array.isArray(rings) || !rings.some((ring) => Array.isArray(ring) && ring.length >= 4)) {
+            out.invalid += 1;
+          }
+          continue;
+        }
+
+        if (geometry.type === "MultiPolygon") {
+          out.polygonLike += 1;
+          const polys = geometry.coordinates;
+          const hasValidRing = Array.isArray(polys) && polys.some((poly) => Array.isArray(poly) && poly.some((ring) => Array.isArray(ring) && ring.length >= 4));
+          if (!hasValidRing) {
+            out.invalid += 1;
+          }
+        }
+      }
+      return out;
+    }
+
+    function computeDroppedIds(beforeCollection, afterCollection) {
+      if (!beforeCollection || !afterCollection || !Array.isArray(beforeCollection.features) || !Array.isArray(afterCollection.features)) {
+        return 0;
+      }
+
+      const afterKeys = new Set();
+      for (const f of afterCollection.features) {
+        const p = f?.properties || {};
+        const key = String(p.fid ?? p.id ?? p.objectid ?? "") + "|" + String(p.symbol ?? "");
+        afterKeys.add(key);
+      }
+
+      let dropped = 0;
+      for (const f of beforeCollection.features) {
+        const p = f?.properties || {};
+        const key = String(p.fid ?? p.id ?? p.objectid ?? "") + "|" + String(p.symbol ?? "");
+        if (!afterKeys.has(key)) {
+          dropped += 1;
+        }
+      }
+      return dropped;
+    }
+
+    function updateHoleDebugPanel() {
+      if (!debugWrapEl) {
+        return;
+      }
+
+      if (!debugHolesEnabled) {
+        debugWrapEl.style.display = "none";
+        debugWrapEl.innerHTML = "";
+        return;
+      }
+
+      debugWrapEl.style.display = "block";
+
+      if (!lastRenderDiagnostics) {
+        debugWrapEl.innerHTML = "<strong>Felsok hal:</strong> Vantar pa nasta renderpass...";
+        return;
+      }
+
+      const d = lastRenderDiagnostics;
+      const lines = [
+        "<strong>Felsok hal (senaste pass)</strong>",
+        "Typ: <span class=\"mono\">" + d.passType + "</span>",
+        "BBox: <span class=\"mono\">" + d.windowKm + " km</span>",
+        "Inlasta objekt: <span class=\"mono\">" + d.rawCount + "</span>",
+        "Efter forenkling: <span class=\"mono\">" + d.simplifiedCount + "</span>",
+        "Efter thinning: <span class=\"mono\">" + d.thinnedCount + "</span>",
+        "Bortgallrade av stride: <span class=\"mono\">" + d.droppedByStride + "</span>",
+        "Polygoner ogiltiga efter forenkling: <span class=\"mono\">" + d.invalidPolygons + "</span>",
+        "Renderbara objekt: <span class=\"mono\">" + d.renderableCount + "</span>",
+        "Parametrar: <span class=\"mono\">limit " + d.limit + ", stride " + d.stride + ", fkl " + d.simplifyStep + "</span>"
+      ];
+      debugWrapEl.innerHTML = lines.join("<br>");
+    }
+
+    function decimateLineCoords(coords, step, closed) {
+      if (!Array.isArray(coords) || coords.length <= 4 || step <= 1) {
+        return coords;
+      }
+
+      const out = [];
+      const lastIndex = coords.length - 1;
+      out.push(coords[0]);
+      for (let i = 1; i < lastIndex; i += 1) {
+        if (i % step === 0) {
+          out.push(coords[i]);
+        }
+      }
+      out.push(coords[lastIndex]);
+
+      if (closed) {
+        const first = out[0];
+        const last = out[out.length - 1];
+        if (first && last && (first[0] !== last[0] || first[1] !== last[1])) {
+          out.push([first[0], first[1]]);
+        }
+        if (out.length < 4) {
+          return coords;
+        }
+      } else if (out.length < 2) {
+        return coords;
+      }
+
+      return out;
+    }
+
+    function simplifyGeometryByStep(geometry, step) {
+      if (!geometry || !geometry.coordinates || step <= 1) {
+        return geometry;
+      }
+
+      if (geometry.type === "LineString") {
+        return {
+          ...geometry,
+          coordinates: decimateLineCoords(geometry.coordinates, step, false)
+        };
+      }
+
+      if (geometry.type === "MultiLineString") {
+        return {
+          ...geometry,
+          coordinates: geometry.coordinates.map((line) => decimateLineCoords(line, step, false))
+        };
+      }
+
+      if (geometry.type === "Polygon") {
+        return {
+          ...geometry,
+          coordinates: geometry.coordinates.map((ring) => decimateLineCoords(ring, step, true))
+        };
+      }
+
+      if (geometry.type === "MultiPolygon") {
+        return {
+          ...geometry,
+          coordinates: geometry.coordinates.map((poly) => poly.map((ring) => decimateLineCoords(ring, step, true)))
+        };
+      }
+
+      return geometry;
+    }
+
+    function simplifyCollectionByStep(collection, step) {
+      if (!collection || !Array.isArray(collection.features) || step <= 1) {
+        return collection;
+      }
+
+      return {
+        type: "FeatureCollection",
+        features: collection.features.map((feature) => {
+          if (!feature || !feature.geometry) {
+            return feature;
+          }
+          return {
+            ...feature,
+            geometry: simplifyGeometryByStep(feature.geometry, step)
+          };
+        })
+      };
+    }
+
+    function updateWindowBadge(win) {
+      const kmW = Math.round(win.width / 1000);
+      const kmH = Math.round(win.height / 1000);
+      const profile = getRenderProfile(win);
+      const detailPercent = Math.round((profile.limit / maxFeatures) * 100);
+      const stateText = `Intervall ${profile.level}/10 | Budget ${detailPercent}% | Fkl ${profile.simplify}`;
+      windowBadgeEl.textContent = `Kartfonster: ${kmW} x ${kmH} km | ${stateText}`;
+      windowBadgeEl.classList.toggle("ok", detailPercent >= 38);
+      windowBadgeEl.classList.toggle("warn", detailPercent < 38);
+    }
+
+    function makeCenteredBbox3006(lat, lng, halfSizeMeters) {
+      const center3006 = proj4("EPSG:4326", "EPSG:3006", [lng, lat]);
+      return {
+        minX: center3006[0] - halfSizeMeters,
+        minY: center3006[1] - halfSizeMeters,
+        maxX: center3006[0] + halfSizeMeters,
+        maxY: center3006[1] + halfSizeMeters
+      };
+    }
+
+    function clearUnitInfo(message = "Klicka pa en geologisk yta i kartan.") {
+      unitInfoEl.textContent = message;
+    }
+
+    function clearBergkvalitetInfo(message = "Klicka pa en geologisk yta for att kontrollera provresultat.") {
+      bergkvalitetInfoEl.textContent = message;
+    }
+
+    function isFiniteLngLat(point) {
+      return Array.isArray(point)
+        && point.length >= 2
+        && Number.isFinite(point[0])
+        && Number.isFinite(point[1]);
+    }
+
+    function isPointInRing(point, ring) {
+      if (!isFiniteLngLat(point) || !Array.isArray(ring) || ring.length < 3) {
+        return false;
+      }
+
+      const x = point[0];
+      const y = point[1];
+      let inside = false;
+
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+        const xi = ring[i]?.[0];
+        const yi = ring[i]?.[1];
+        const xj = ring[j]?.[0];
+        const yj = ring[j]?.[1];
+
+        if (![xi, yi, xj, yj].every(Number.isFinite)) {
+          continue;
+        }
+
+        const intersects = ((yi > y) !== (yj > y))
+          && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi);
+        if (intersects) {
+          inside = !inside;
+        }
+      }
+
+      return inside;
+    }
+
+    function isPointInPolygon(point, rings) {
+      if (!Array.isArray(rings) || !rings.length) {
+        return false;
+      }
+
+      if (!isPointInRing(point, rings[0])) {
+        return false;
+      }
+
+      for (let i = 1; i < rings.length; i += 1) {
+        if (isPointInRing(point, rings[i])) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function geometryContainsPoint(geometry, point) {
+      if (!geometry || !isFiniteLngLat(point)) {
+        return false;
+      }
+
+      if (geometry.type === "Polygon") {
+        return isPointInPolygon(point, geometry.coordinates);
+      }
+
+      if (geometry.type === "MultiPolygon" && Array.isArray(geometry.coordinates)) {
+        for (const polygonRings of geometry.coordinates) {
+          if (isPointInPolygon(point, polygonRings)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    function buildBergkvalitetResultText(feature) {
+      const p = feature?.properties || {};
+      const textCandidates = [
+        p.text,
+        p.tekst,
+        p.beskrivning,
+        p.beskrivning_tx,
+        p.kommentar,
+        p.kommentar_tx,
+        p.anmarkning,
+        p.anmarkning_tx,
+        p.karttyp_tx,
+        p.kartering,
+        p.metod,
+        p.BKVV,
+        p.BKVB,
+        p.BKVJ,
+        p.bkvv,
+        p.bkvb,
+        p.bkvj
+      ]
+        .filter((v) => v !== undefined && v !== null && String(v).trim() !== "")
+        .map((v) => String(v).trim());
+
+      if (textCandidates.length) {
+        return textCandidates.join(" | ");
+      }
+
+      const fallback = Object.entries(p)
+        .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== "")
+        .slice(0, 5)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" | ");
+
+      return fallback || "Provresultat utan textinnehall";
+    }
+
+    function renderBergkvalitetInfoForFeature(geologyFeature) {
+      if (!geologyFeature?.geometry) {
+        clearBergkvalitetInfo();
+        return;
+      }
+
+      const matches = [];
+      for (const bqFeature of currentBergkvalitetPoints) {
+        const c = bqFeature?.geometry?.coordinates;
+        if (!isFiniteLngLat(c)) {
+          continue;
+        }
+        if (geometryContainsPoint(geologyFeature.geometry, c)) {
+          matches.push(bqFeature);
+        }
+      }
+
+      if (!matches.length) {
+        bergkvalitetInfoEl.innerHTML = [
+          `<div class="unit-row"><div class="unit-key mono">Fraga 1</div><div class="mono">Nej</div></div>`,
+          `<div class="unit-row"><div class="unit-key mono">Antal</div><div class="mono">0</div></div>`,
+          `<div class="mono">Inga provresultat inom den aktuella geologiska ytan.</div>`
+        ].join("");
+        return;
+      }
+
+      const rows = [
+        `<div class="unit-row"><div class="unit-key mono">Fraga 1</div><div class="mono">Ja</div></div>`,
+        `<div class="unit-row"><div class="unit-key mono">Antal</div><div class="mono">${matches.length}</div></div>`
+      ];
+
+      for (let i = 0; i < matches.length; i += 1) {
+        const p = matches[i]?.properties || {};
+        const id = p.objectid ?? p.id ?? p.fid ?? (i + 1);
+        const txt = escapeHtml(buildBergkvalitetResultText(matches[i]));
+        rows.push(`<div class="bq-item mono"><strong>Prov ${i + 1} (ID ${escapeHtml(String(id))}):</strong><br>${txt}</div>`);
+      }
+
+      bergkvalitetInfoEl.innerHTML = rows.join("");
+    }
+
+    function formatUnitValue(value) {
+      if (value === null || value === undefined) {
+        return "-";
+      }
+      const text = String(value).trim();
+      return text.length ? text : "-";
+    }
+
+    function renderUnitInfo(feature) {
+      selectedGeologyFeature = feature || null;
+      const p = feature?.properties || {};
+      const orderedKeys = GEO_UNIT_STANDARD_FIELDS;
+
+      const canonicalText = formatUnitValue(
+        p.etikett
+        || [p.id, p.bergart_tx || p.bergart, p.geo_enh_tx || p.geo_enh].filter((v) => v !== undefined && v !== null && String(v).trim() !== "").join(";")
+        || getLegendLabel(getLegendKey(feature))
+      );
+
+      const rows = [];
+      for (const k of orderedKeys) {
+        if (p[k] !== undefined && p[k] !== null && String(p[k]).trim() !== "") {
+          rows.push({ key: k, value: formatUnitValue(p[k]) });
+        }
+      }
+
+      if (!rows.length) {
+        const fallbackKeys = Object.keys(p).filter((k) => p[k] !== null && p[k] !== undefined && String(p[k]).trim() !== "").slice(0, 8);
+        for (const k of fallbackKeys) {
+          rows.push({ key: k, value: formatUnitValue(p[k]) });
+        }
+      }
+
+      const swatchColor = getFeatureFillColor(feature);
+      const body = rows.map((row) => (
+        `<div class="unit-row"><div class="unit-key mono">${row.key}</div><div class="mono">${row.value}</div></div>`
+      )).join("");
+
+      unitInfoEl.innerHTML = [
+        `<div style="display:flex;align-items:center;gap:0.45rem;margin-bottom:0.35rem;">`,
+        `<span class="swatch" style="background:${swatchColor};"></span>`,
+        `<strong class="mono">${canonicalText}</strong>`,
+        `</div>`,
+        body || `<div class="mono">Ingen attributinformation tillganglig.</div>`
+      ].join("");
+
+      renderBergkvalitetInfoForFeature(feature);
+    }
+
+    async function openGeoPackage() {
+      if (gpkgInstance) {
+        return gpkgInstance;
+      }
+      if (gpkgOpenPromise) {
+        return gpkgOpenPromise;
+      }
+
+      if (!window.GeoPackage) {
+        throw new Error("GeoPackage-biblioteket kunde inte laddas.");
+      }
+
+      if (typeof window.GeoPackage.setSqljsWasmLocateFile === "function") {
+        window.GeoPackage.setSqljsWasmLocateFile((file) => "https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@4.2.8/dist/" + file);
+      }
+
+      gpkgOpenPromise = fetch(gpkgPath)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error("Kunde inte lasa GPKG-filen.");
+          }
+          return response.arrayBuffer();
+        })
+        .then((arrayBuffer) => {
+          const bytes = new Uint8Array(arrayBuffer);
+          const openFn = window.GeoPackage.open || window.GeoPackage.GeoPackageAPI?.open;
+          if (!openFn) {
+            throw new Error("GeoPackage API saknar open-metod.");
+          }
+          return openFn(bytes);
+        })
+        .then((gpkg) => {
+          gpkgInstance = gpkg;
+          return gpkg;
+        })
+        .finally(() => {
+          gpkgOpenPromise = null;
+        });
+
+      return gpkgOpenPromise;
+    }
+
+    function removeActiveLayer() {
+      if (activeLayer && map.hasLayer(activeLayer)) {
+        map.removeLayer(activeLayer);
+      }
+      activeLayer = null;
+      activeQueryBox3006 = null;
+      activeRenderedLimit = 0;
+      activeSimplifyStep = 99;
+    }
+
+    function removeBergkvalitetPointLayer() {
+      if (bergkvalitetPointLayer && map.hasLayer(bergkvalitetPointLayer)) {
+        map.removeLayer(bergkvalitetPointLayer);
+      }
+      bergkvalitetPointLayer = null;
+      currentBergkvalitetPoints = [];
+      if (selectedGeologyFeature) {
+        renderBergkvalitetInfoForFeature(selectedGeologyFeature);
+      } else {
+        clearBergkvalitetInfo();
+      }
+    }
+
+    function drawCollectionOnMap(
+      collection,
+      queryBox,
+      truncated,
+      statusPrefix = "Geologisk enhet yta tand",
+      renderedLimit = 0,
+      simplifyStep = 99,
+      diagnostics = null
+    ) {
+      removeActiveLayer();
+
+      if (!collection.features.length) {
+        removeBergkvalitetPointLayer();
+        clearUnitInfo("Ingen geologisk enhet i aktuell vy.");
+        setStatus("Inga geologiska ytor i aktuell vy.");
+        return false;
+      }
+
+      const renderableCount = countRenderableFeatures(collection);
+      if (!renderableCount) {
+        removeBergkvalitetPointLayer();
+        clearUnitInfo("Inga renderbara geologiska enheter i aktuell vy.");
+        setStatus("Inga renderbara geologiska ytor i aktuell vy.");
+        if (diagnostics) {
+          lastRenderDiagnostics = {
+            ...diagnostics,
+            renderableCount: 0
+          };
+          updateHoleDebugPanel();
+        }
+        return false;
+      }
+
+      // Use lighter styling for very large/coarse draws to reduce canvas work.
+      activeRenderMode = (renderableCount > 4500 || simplifyStep >= 8) ? "coarse" : "normal";
+
+      activeLayer = L.geoJSON(collection, {
+        renderer: canvasRenderer,
+        interactive: true,
+        style: styleForFeature,
+        pointToLayer: (_feature, latlng) => L.circleMarker(latlng, {
+          renderer: canvasRenderer,
+          radius: 2.8,
+          color: "#1d4f5f",
+          fillColor: "#5fb8ca",
+          fillOpacity: 0.5,
+          weight: 1
+        })
+      }).addTo(map);
+
+      activeLayer.eachLayer((layer) => {
+        layer.on("click", (evt) => {
+          const clickedFeature = evt?.target?.feature || layer.feature;
+          if (clickedFeature) {
+            renderUnitInfo(clickedFeature);
+          }
+        });
+      });
+
+      activeQueryBox3006 = queryBox;
+      activeRenderedLimit = renderedLimit;
+      activeSimplifyStep = simplifyStep;
+      clearUnitInfo();
+
+      const truncText = truncated ? " (med urval)" : "";
+      setStatus(statusPrefix + ": " + renderableCount + " objekt" + truncText + ".");
+      if (diagnostics) {
+        lastRenderDiagnostics = {
+          ...diagnostics,
+          renderableCount
+        };
+        updateHoleDebugPanel();
+      }
+      return true;
+    }
+
+    async function preloadAroundStartView() {
+      if (window.location.protocol === "file:") {
+        return;
+      }
+      if (preloadPromise) {
+        return preloadPromise;
+      }
+
+      preloadPromise = (async () => {
+        try {
+          const gpkg = await openGeoPackage();
+          const center = map.getCenter();
+          const localBox = makeCenteredBbox3006(center.lat, center.lng, preloadHalfSizeMeters);
+          const queryBox = expandBbox(localBox, 0.2);
+          const preloadLimit = 9000;
+          const subset = loadSubsetFromIndexedDao(gpkg, queryBox, preloadLimit);
+          const collection = simplifyCollectionByStep(toWgs84Collection(subset), 2);
+          if (collection.features.length) {
+            preloadedCollection = collection;
+            preloadedQueryBox3006 = queryBox;
+          }
+        } catch (_err) {
+          // Preload is best-effort only.
+        } finally {
+          preloadPromise = null;
+        }
+      })();
+
+      return preloadPromise;
+    }
+
+    function loadSubsetFromIndexedDaoForTable(gpkg, targetTable, bbox, limit) {
+      const dao = gpkg.getFeatureDao(targetTable);
+      const parseFeature = window.GeoPackage.GeoPackage.parseFeatureRowIntoGeoJSON;
+
+      const features = [];
+      let truncated = false;
+      try {
+        const bb = new window.GeoPackage.BoundingBox(bbox.minX, bbox.minY, bbox.maxX, bbox.maxY);
+        const iterator = dao.fastQueryBoundingBox(bb);
+        for (const row of iterator) {
+          if (row == null) {
+            continue;
+          }
+
+          const featureRow = row.values ? row : dao.getRow(row);
+          const feature = parseFeature(featureRow, dao.srs);
+          if (!feature) {
+            continue;
+          }
+          feature.type = "Feature";
+          features.push(feature);
+          if (features.length >= limit) {
+            truncated = true;
+            break;
+          }
+        }
+      } catch (_err) {
+        const fallback = normalizeCollection(gpkg.queryForGeoJSONFeaturesInTable(targetTable));
+        for (const feature of fallback.features) {
+          features.push(feature);
+          if (features.length >= limit) {
+            truncated = true;
+            break;
+          }
+        }
+      }
+
+      return {
+        type: "FeatureCollection",
+        features,
+        truncated
+      };
+    }
+
+    function loadSubsetFromIndexedDao(gpkg, bbox, limit) {
+      return loadSubsetFromIndexedDaoForTable(gpkg, tableName, bbox, limit);
+    }
+
+    async function openBergkvalitetGeoPackage() {
+      if (bergkvalitetGpkgInstance) {
+        return bergkvalitetGpkgInstance;
+      }
+      if (bergkvalitetGpkgOpenPromise) {
+        return bergkvalitetGpkgOpenPromise;
+      }
+
+      if (!window.GeoPackage) {
+        throw new Error("GeoPackage-biblioteket kunde inte laddas.");
+      }
+
+      bergkvalitetGpkgOpenPromise = fetch(bergkvalitetGpkgPath)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error("Kunde inte lasa bergkvalitet.gpkg.");
+          }
+          return response.arrayBuffer();
+        })
+        .then((arrayBuffer) => {
+          const bytes = new Uint8Array(arrayBuffer);
+          const openFn = window.GeoPackage.open || window.GeoPackage.GeoPackageAPI?.open;
+          if (!openFn) {
+            throw new Error("GeoPackage API saknar open-metod.");
+          }
+          return openFn(bytes);
+        })
+        .then((gpkg) => {
+          bergkvalitetGpkgInstance = gpkg;
+          return gpkg;
+        })
+        .finally(() => {
+          bergkvalitetGpkgOpenPromise = null;
+        });
+
+      return bergkvalitetGpkgOpenPromise;
+    }
+
+    function centroidOfGeometry(geometry) {
+      if (!geometry || !geometry.coordinates) {
+        return null;
+      }
+
+      const points = [];
+      const collect = (node) => {
+        if (!Array.isArray(node)) {
+          return;
+        }
+        if (node.length >= 2 && typeof node[0] === "number" && typeof node[1] === "number") {
+          points.push(node);
+          return;
+        }
+        for (const child of node) {
+          collect(child);
+        }
+      };
+      collect(geometry.coordinates);
+      if (!points.length) {
+        return null;
+      }
+
+      let minX = points[0][0];
+      let maxX = points[0][0];
+      let minY = points[0][1];
+      let maxY = points[0][1];
+      for (let i = 1; i < points.length; i += 1) {
+        const p = points[i];
+        minX = Math.min(minX, p[0]);
+        maxX = Math.max(maxX, p[0]);
+        minY = Math.min(minY, p[1]);
+        maxY = Math.max(maxY, p[1]);
+      }
+      return [(minX + maxX) / 2, (minY + maxY) / 2];
+    }
+
+    function polygonCollectionToPointCollection(collection) {
+      const normalized = normalizeCollection(collection);
+      const features = [];
+      for (const feature of normalized.features) {
+        const c = centroidOfGeometry(feature?.geometry);
+        if (!c) {
+          continue;
+        }
+        features.push({
+          type: "Feature",
+          properties: feature.properties || {},
+          geometry: {
+            type: "Point",
+            coordinates: c
+          }
+        });
+      }
+      return {
+        type: "FeatureCollection",
+        features
+      };
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function buildBergkvalitetTooltip(feature) {
+      const p = feature?.properties || {};
+      const entries = Object.entries(p).filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "");
+      const nonEmptyCount = entries.length;
+
+      const klassValue = p.BKVV ?? p.BKVB ?? p.BKVJ ?? p.bkvv ?? p.bkvb ?? p.bkvj ?? "-";
+      const methodValue = p.karttyp_tx ?? p.kartering ?? p.metod ?? p.insamling ?? "-";
+      const preview = entries
+        .slice(0, 6)
+        .map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(v)}`)
+        .join("<br>");
+
+      return [
+        `<strong>Bergkvalitetspunkt</strong>`,
+        `Datamangd: ${nonEmptyCount} falt`,
+        `Klass: ${escapeHtml(klassValue)}`,
+        `Metod: ${escapeHtml(methodValue)}`,
+        preview ? `<span class="mono">${preview}</span>` : ""
+      ].join("<br>");
+    }
+
+    function drawBergkvalitetPoints(collection) {
+      removeBergkvalitetPointLayer();
+      const normalized = normalizeCollection(collection);
+      currentBergkvalitetPoints = normalized.features || [];
+      if (!normalized.features.length) {
+        if (selectedGeologyFeature) {
+          renderBergkvalitetInfoForFeature(selectedGeologyFeature);
+        } else {
+          clearBergkvalitetInfo("Inga provresultat i aktuell vy.");
+        }
+        return;
+      }
+
+      bergkvalitetPointLayer = L.geoJSON(normalized, {
+        renderer: canvasRenderer,
+        interactive: true,
+        onEachFeature: (feature, layer) => {
+          layer.bindTooltip(buildBergkvalitetTooltip(feature), {
+            sticky: true,
+            direction: "top",
+            opacity: 0.96
+          });
+          layer.on("mouseover", () => {
+            layer.setStyle({ radius: 4.7, color: "#081d35", weight: 1.4 });
+          });
+          layer.on("mouseout", () => {
+            layer.setStyle({ radius: 3.2, color: "#112f52", weight: 1.2 });
+          });
+        },
+        pointToLayer: (_feature, latlng) => L.circleMarker(latlng, {
+          renderer: canvasRenderer,
+          pane: "markerPane",
+          radius: 3.2,
+          color: "#112f52",
+          fillColor: "#f2c14e",
+          fillOpacity: 0.95,
+          weight: 1.2
+        })
+      }).addTo(map);
+
+      if (typeof bergkvalitetPointLayer.bringToFront === "function") {
+        bergkvalitetPointLayer.bringToFront();
+      }
+
+      if (selectedGeologyFeature) {
+        renderBergkvalitetInfoForFeature(selectedGeologyFeature);
+      } else {
+        clearBergkvalitetInfo();
+      }
+    }
+
+    async function refreshLayerForView(forceReload = false) {
+      const token = ++refreshToken;
+      const win = getWindowMeters();
+      const profile = getRenderProfile(win);
+      updateWindowBadge(win);
+
+      if (window.location.protocol === "file:") {
+        removeActiveLayer();
+        removeBergkvalitetPointLayer();
+        clearUnitInfo("Ingen geologisk enhet tillganglig i file-lage.");
+        setStatus("Kors i file-lage: kor via http:// for att kunna lasa GPKG.");
+        return;
+      }
+
+      const queryBox = expandBbox(win, getAdaptiveQueryPaddingFactor(win));
+      const renderLimit = profile.limit;
+      const renderSimplifyStep = profile.simplify;
+      const renderStride = profile.stride;
+
+      if (!forceReload && activeLayer && bboxContains(activeQueryBox3006, win)) {
+        const hasEnoughDetail = activeRenderedLimit >= renderLimit && activeSimplifyStep <= renderSimplifyStep;
+        if (hasEnoughDetail) {
+          setStatus("Visar geologisk enhet yta (cache), intervall " + profile.level + ".");
+          return;
+        }
+      }
+
+      if (!forceReload && !activeLayer && preloadedCollection && bboxContains(preloadedQueryBox3006, win)) {
+        drawCollectionOnMap(preloadedCollection, preloadedQueryBox3006, false, "Geologisk enhet yta tand (forladdat)", 9000, 2, {
+          passType: "forladdat",
+          windowKm: Math.round(Math.max(win.width, win.height) / 1000),
+          rawCount: preloadedCollection.features.length,
+          simplifiedCount: preloadedCollection.features.length,
+          thinnedCount: preloadedCollection.features.length,
+          droppedByStride: 0,
+          invalidPolygons: getPolygonValidityStats(preloadedCollection).invalid,
+          limit: 9000,
+          stride: 1,
+          simplifyStep: 2
+        });
+        return;
+      }
+
+      setStatus("Intervallrendering niva " + profile.level + " av 10...");
+
+      try {
+        const gpkg = await openGeoPackage();
+        if (token !== refreshToken) {
+          return;
+        }
+
+        const subset = loadSubsetFromIndexedDao(gpkg, queryBox, renderLimit);
+        const transformed = toWgs84Collection(subset);
+        const simplified = simplifyCollectionByStep(transformed, renderSimplifyStep);
+        const thinned = thinCollectionByStride(simplified, renderStride, true);
+        const droppedByStride = computeDroppedIds(simplified, thinned);
+        const polyStats = getPolygonValidityStats(thinned);
+
+        let drawn = drawCollectionOnMap(
+            thinned,
+            queryBox,
+            subset.truncated,
+            "Geologisk enhet yta (intervall " + profile.level + ")",
+            renderLimit,
+            renderSimplifyStep,
+            {
+              passType: "intervall-" + profile.level,
+              windowKm: Math.round(Math.max(win.width, win.height) / 1000),
+              rawCount: subset.features.length,
+              simplifiedCount: simplified.features.length,
+              thinnedCount: thinned.features.length,
+              droppedByStride,
+              invalidPolygons: polyStats.invalid,
+              limit: renderLimit,
+              stride: renderStride,
+              simplifyStep: renderSimplifyStep
+            }
+          );
+
+        if (!drawn) {
+          const rescueLimit = Math.max(Math.round(renderLimit * 1.4), 1600);
+          const rescueSubset = loadSubsetFromIndexedDao(gpkg, queryBox, rescueLimit);
+          const rescueStep = Math.max(2, Math.min(5, renderSimplifyStep - 2));
+          const rescueCollection = simplifyCollectionByStep(toWgs84Collection(rescueSubset), rescueStep);
+          const rescuePolyStats = getPolygonValidityStats(rescueCollection);
+          drawn = drawCollectionOnMap(
+            rescueCollection,
+            queryBox,
+            true,
+            "Geologisk enhet yta (intervall-reserv)",
+            rescueLimit,
+            rescueStep,
+            {
+              passType: "intervall-reserv",
+              windowKm: Math.round(Math.max(win.width, win.height) / 1000),
+              rawCount: rescueSubset.features.length,
+              simplifiedCount: rescueCollection.features.length,
+              thinnedCount: rescueCollection.features.length,
+              droppedByStride: 0,
+              invalidPolygons: rescuePolyStats.invalid,
+              limit: rescueLimit,
+              stride: 1,
+              simplifyStep: rescueStep
+            }
+          );
+        }
+
+        if (!drawn) {
+          removeBergkvalitetPointLayer();
+          return;
+        }
+
+        try {
+          const bq = await openBergkvalitetGeoPackage();
+          if (token !== refreshToken) {
+            return;
+          }
+          const bqSubset = loadSubsetFromIndexedDaoForTable(bq, bergkvalitetTableName, queryBox, maxBergkvalitetPoints);
+          const bqWgs84 = toWgs84Collection(bqSubset);
+          const bqPoints = polygonCollectionToPointCollection(bqWgs84);
+          drawBergkvalitetPoints(bqPoints);
+          setStatus(`Geologisk enhet yta (intervall ${profile.level}): ${countRenderableFeatures(thinned)} objekt${subset.truncated ? " (med urval)" : ""}. Bergkvalitet-punkter: ${bqPoints.features.length}.`);
+        } catch (_bqError) {
+          removeBergkvalitetPointLayer();
+        }
+      } catch (_error) {
+        removeActiveLayer();
+        removeBergkvalitetPointLayer();
+        clearUnitInfo("Kunde inte lasa geologisk enhet just nu.");
+        setStatus("Kunde inte ladda geologisk enhet yta just nu.");
+      }
+    }
+
+    async function loadQlrExtentHint() {
+      try {
+        const response = await fetch(qlrPath, { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const qlrText = await response.text();
+        parseQlrSymbolStylesFromText(qlrText);
+        const xml = new DOMParser().parseFromString(qlrText, "application/xml");
+        const layerNodes = [...xml.querySelectorAll("maplayer")];
+        const byExactId = layerNodes.find((node) => {
+          const idText = node.querySelector("id")?.textContent?.trim() || "";
+          return idText === "Geologisk_enhet_yta_c6a19df8_013f_4a13_92c1_e73b191fd271";
+        });
+        const byLayerName = layerNodes.find((node) => {
+          const layerName = node.querySelector("layername")?.textContent?.trim() || "";
+          return layerName === "Geologisk enhet yta";
+        });
+        const byDatasource = layerNodes.find((node) => {
+          const datasource = node.querySelector("datasource")?.textContent || "";
+          return datasource.includes("layername=geologisk_enhet_yta") && !datasource.includes("overbeteckning");
+        });
+        const mainLayerNode = byExactId || byLayerName || byDatasource || null;
+
+        if (mainLayerNode) {
+          const renderer = mainLayerNode.querySelector("renderer-v2[type='categorizedSymbol']");
+          if (renderer) {
+            const symbolColorByName = new Map();
+            const symbolNodes = [...renderer.querySelectorAll("symbols > symbol")];
+            for (const symbolNode of symbolNodes) {
+              const name = symbolNode.getAttribute("name");
+              if (!name) {
+                continue;
+              }
+              const colorOption = symbolNode.querySelector("layer[class='SimpleFill'] Option[name='color']");
+              const raw = colorOption?.getAttribute("value");
+              const rgb = parseQlrRgb(raw);
+              if (rgb) {
+                symbolColorByName.set(String(name), rgb);
+              }
+            }
+
+            qlrStyleBySymbolValue.clear();
+            const categories = [...renderer.querySelectorAll("categories > category")];
+            for (const category of categories) {
+              const symbolValue = category.getAttribute("value");
+              if (!symbolValue) {
+                continue;
+              }
+              const symbolRef = category.getAttribute("symbol") || "";
+              const label = category.getAttribute("label") || symbolValue;
+              qlrStyleBySymbolValue.set(String(symbolValue), {
+                label,
+                color: symbolColorByName.get(String(symbolRef)) || null
+              });
+            }
+          }
+        }
+
+        const extentNode = (mainLayerNode || xml).querySelector("wgs84extent");
+        if (!extentNode) {
+          return;
+        }
+
+        const xmin = Number(extentNode.querySelector("xmin")?.textContent);
+        const ymin = Number(extentNode.querySelector("ymin")?.textContent);
+        const xmax = Number(extentNode.querySelector("xmax")?.textContent);
+        const ymax = Number(extentNode.querySelector("ymax")?.textContent);
+
+        if ([xmin, ymin, xmax, ymax].some((v) => Number.isNaN(v))) {
+          return;
+        }
+      } catch (_err) {
+        // Optional hint only.
+      }
+    }
+
+    map.on("click", (event) => {
+      const lat = event.latlng.lat;
+      const lon = event.latlng.lng;
+      const activeLocalZone = getNearestSwerefLocalZone(lon);
+      const swerefLocal = proj4("EPSG:4326", activeLocalZone.code, [lon, lat]);
+      lastMapClickSweref = {
+        n: swerefLocal[1].toFixed(2),
+        e: swerefLocal[0].toFixed(2),
+        zone: activeLocalZone.name,
+        zoneCode: activeLocalZone.code
+      };
+
+      updateClickMarker(event.latlng);
+
+      coordsEl.innerHTML = [
+        "<strong>Lokalt SWEREF 99 (val efter plats)</strong><br>",
+        activeLocalZone.name + " N: <span class=\"mono\">" + swerefLocal[1].toFixed(2) + "</span> ",
+        "E: <span class=\"mono\">" + swerefLocal[0].toFixed(2) + "</span>"
+      ].join("");
+    });
+
+    window.addEventListener("resize", () => {
+      if (!clickMarker) {
+        renderProvPointLayer();
+        return;
+      }
+      clickMarker.setIcon(createClickMarkerIcon());
+      renderProvPointLayer();
+    });
+
+    let refreshTimer = null;
+    function scheduleRefresh() {
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+      }
+      refreshTimer = setTimeout(() => {
+        refreshLayerForView(false);
+      }, 280);
+    }
+
+    map.on("moveend", scheduleRefresh);
+
+    document.getElementById("reset-view").addEventListener("click", () => {
+      map.setView(startView.center, startView.zoom);
+    });
+
+    document.getElementById("reload-layer").addEventListener("click", () => {
+      refreshLayerForView(true);
+    });
+
+    document.getElementById("toggle-debug").addEventListener("click", () => {
+      debugHolesEnabled = !debugHolesEnabled;
+      if (debugHolesEnabled) {
+        setStatus("Felsok hal aktivt: visar renderdiagnostik.");
+      }
+      updateHoleDebugPanel();
+    });
+
+    initFloatingWindows();
+    initProvresultatWindow();
+    initQrScanWindow();
+    initMaterialWindow();
+    initFlowMenu();
+    loadQlrExtentHint();
+    preloadAroundStartView();
+    scheduleRefresh();
+  </script>
+</body>
+</html>

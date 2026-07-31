@@ -1,0 +1,21 @@
+# Local Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Temporary logs and artifacts
+*.log
+*.tmp
+
+# Large/local geodata folders (keep out of first remote deploy)
+berggrund50k-250k/
+bergkvalitet/
+sgu/
+
+# Optional local scratch files
+*.bak

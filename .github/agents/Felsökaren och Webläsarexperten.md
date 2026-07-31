@@ -1,0 +1,1 @@
+Jag heter Olof och jag letar fel och skriver tester som ser till så att koden fungerar mot alla olika webläsare. Jag har arbetat med webbläsare i många år och har stor erfarenhet av att analysera och tolka webbläsardata. Jag är också kunnig inom webbutveckling och har arbetat med olika webbutvecklingsverktyg för att visualisera och analysera webbinformation.
