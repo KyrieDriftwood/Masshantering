@@ -1014,12 +1014,8 @@
         <section class="panel p-2 text-center" id="qr-panel">
           <h2 class="window-title">Automatiskt uppdaterad QR</h2>
           <div id="qr-content" class="mt-2">
-            <p class="small text-muted mb-2">QR-kod visas här.</p>
-            <div class="qr-code-frame" id="qr-image-frame" hidden>
-              <img id="qr-image" src="" alt="QR-kod" style="width:100%;height:100%;display:block">
-              <span class="qr-flow-letter" id="qr-image-letter" aria-hidden="true">A</span>
-            </div>
-            <button id="qr-generate" class="btn btn-sm btn-outline-primary mt-2">Generera exempel</button>
+            <div class="qr-code-frame" id="qr-image-frame" aria-label="QR-kod för flik A"></div>
+            <p class="small text-muted mb-0" id="qr-auto-status">Sample-QR för flik A.</p>
           </div>
         </section>
       </aside>
@@ -1109,13 +1105,9 @@
 
             <div id="prov-fields-grid" class="field-grid"></div>
 
-            <textarea id="prov-csv-preview" class="csv-preview" readonly></textarea>
             <div class="toolbar">
-              <button id="prov-generate-qr" type="button">Skapa QR-kod</button>
               <button id="prov-download-csv" type="button">Ladda ner CSV</button>
             </div>
-            <div class="qr-wrap" id="prov-qr-wrap"><div class="mono">Ingen QR-kod skapad.</div></div>
-            <div class="mono" id="prov-qr-status">CSV redo nar du har lagt till minst en flik.</div>
           </div>
         </section>
       </aside>
@@ -1941,6 +1933,75 @@
       }
     };
 
+    let flowQrUpdateTimer = null;
+
+    function collectActiveFlowValues() {
+      const flow = FLOW_CONFIG[activeFlow];
+      if (!flow) {
+        return [];
+      }
+
+      const values = [];
+      for (const windowId of flow.windows) {
+        const windowEl = document.getElementById(windowId);
+        if (!windowEl) {
+          continue;
+        }
+        const fields = windowEl.querySelectorAll("input:not([type='file']):not([readonly]), select, textarea:not([readonly])");
+        for (const field of fields) {
+          const value = String(field.value || "").trim();
+          if (!value) {
+            continue;
+          }
+          values.push(value.slice(0, 80));
+          if (values.length >= 48) {
+            return values;
+          }
+        }
+      }
+      return values;
+    }
+
+    function updateActiveFlowQr() {
+      const qrFrame = document.getElementById("qr-image-frame");
+      const qrStatus = document.getElementById("qr-auto-status");
+      if (!qrFrame || !qrStatus || !window.QRCode) {
+        return;
+      }
+
+      const flowLetter = ["A", "B", "C", "D", "E"].includes(activeFlow) ? activeFlow : "A";
+      const values = collectActiveFlowValues();
+      const payload = JSON.stringify(values);
+
+      qrFrame.innerHTML = "";
+      try {
+        new window.QRCode(qrFrame, {
+          text: payload,
+          width: 210,
+          height: 210,
+          correctLevel: window.QRCode.CorrectLevel.M
+        });
+
+        const letterOverlay = document.createElement("span");
+        letterOverlay.className = "qr-flow-letter";
+        letterOverlay.textContent = flowLetter;
+        letterOverlay.setAttribute("aria-hidden", "true");
+        qrFrame.appendChild(letterOverlay);
+        qrFrame.setAttribute("aria-label", `QR-kod för flik ${flowLetter}`);
+        qrStatus.textContent = values.length
+          ? `QR för flik ${flowLetter}, uppdaterad från ${values.length} värden.`
+          : `Sample-QR för flik ${flowLetter}.`;
+      } catch (_err) {
+        qrFrame.innerHTML = '<div class="mono">För mycket data för QR-koden.</div>';
+        qrStatus.textContent = `Minska mängden text i flik ${flowLetter}.`;
+      }
+    }
+
+    function scheduleActiveFlowQrUpdate() {
+      clearTimeout(flowQrUpdateTimer);
+      flowQrUpdateTimer = setTimeout(updateActiveFlowQr, 120);
+    }
+
     function bringWindowToFront(windowEl) {
       floatingWindowZ += 1;
       windowEl.style.zIndex = String(floatingWindowZ);
@@ -2051,6 +2112,8 @@
         const isActive = button.getAttribute("data-flow") === activeFlow;
         button.classList.toggle("active", isActive);
       }
+
+      updateActiveFlowQr();
     }
 
     function initFlowMenu() {
@@ -2060,8 +2123,11 @@
           setActiveFlow(flowId);
         });
       }
-      setActiveFlow("");
+      setActiveFlow("A");
     }
+
+    document.querySelector(".workspace-ui").addEventListener("input", scheduleActiveFlowQrUpdate);
+    document.querySelector(".workspace-ui").addEventListener("change", scheduleActiveFlowQrUpdate);
 
     function setQrScanStatus(message, isError = false) {
       const statusEl = document.getElementById("qr-scan-status");
@@ -2741,12 +2807,8 @@
       return buildProvCsvFromRows(provRows, options);
     }
 
-    function updateProvCsvPreview() {
-      const previewEl = document.getElementById("prov-csv-preview");
+    function updateProvRowCount() {
       const rowCountEl = document.getElementById("prov-row-count");
-      if (previewEl) {
-        previewEl.value = buildProvCsv({ compactDateForQr: false });
-      }
       if (rowCountEl) {
         rowCountEl.textContent = `${provRows.length} flikar`;
       }
@@ -2807,7 +2869,7 @@
     function renderProvComposer() {
       renderProvSampleTabs();
       renderProvFields();
-      updateProvCsvPreview();
+      updateProvRowCount();
       renderProvPointLayer();
     }
 
@@ -2878,7 +2940,6 @@
       const fillMapBtn = document.getElementById("prov-fill-from-map");
       const removeActiveBtn = document.getElementById("prov-remove-active");
       const clearBtn = document.getElementById("prov-clear-all");
-      const generateQrBtn = document.getElementById("prov-generate-qr");
       const downloadCsvBtn = document.getElementById("prov-download-csv");
 
       ensureProvState();
@@ -2887,14 +2948,6 @@
         clearBtn.addEventListener("click", () => {
           provRows.splice(0, provRows.length);
           activeProvIndex = 0;
-          const qrWrap = document.getElementById("prov-qr-wrap");
-          const qrStatus = document.getElementById("prov-qr-status");
-          if (qrWrap) {
-            qrWrap.innerHTML = '<div class="mono">Ingen QR-kod skapad.</div>';
-          }
-          if (qrStatus) {
-            qrStatus.textContent = "CSV redo nar du har lagt till minst en flik.";
-          }
           ensureProvState();
           renderProvComposer();
         });
@@ -2945,7 +2998,7 @@
             provRows[activeProvIndex][field] = target.value;
           }
           renderProvSampleTabs();
-          updateProvCsvPreview();
+          updateProvRowCount();
           renderProvPointLayer();
         });
 
@@ -2961,7 +3014,7 @@
           const normalized = toIsoDate(target.value);
           provRows[activeProvIndex][field] = normalized;
           target.value = normalized;
-          updateProvCsvPreview();
+          updateProvRowCount();
         });
       }
 
@@ -2990,64 +3043,6 @@
             activeProvIndex = Math.max(0, Math.min(activeProvIndex, provRows.length - 1));
           }
           renderProvComposer();
-        });
-      }
-
-      if (generateQrBtn) {
-        generateQrBtn.addEventListener("click", () => {
-          const qrWrap = document.getElementById("prov-qr-wrap");
-          const qrStatus = document.getElementById("prov-qr-status");
-          if (!qrWrap || !qrStatus) {
-            return;
-          }
-
-          const csv = buildProvCsv();
-          const csvBytes = new TextEncoder().encode(csv).length;
-          const qrCsv = buildProvCsv({ compactDateForQr: true });
-          const qrCsvBytes = new TextEncoder().encode(qrCsv).length;
-          qrWrap.innerHTML = "";
-
-          if (!provRows.length) {
-            qrWrap.innerHTML = '<div class="mono">Lagg till minst en flik for QR-kod.</div>';
-            qrStatus.textContent = "Inga flikar att exportera.";
-            return;
-          }
-
-          if (!window.QRCode) {
-            qrWrap.innerHTML = '<div class="mono">QR-bibliotek saknas i lasaren.</div>';
-            qrStatus.textContent = "Kunde inte skapa QR-kod.";
-            return;
-          }
-
-          try {
-            // QR codes have practical size limits; warn on larger payloads.
-            if (qrCsvBytes > 2800) {
-              qrStatus.textContent = `QR-data ar ${qrCsvBytes} bytes (datum sparas som dagar sedan 1970). QR kan bli svarlast, overvaga farre flikar.`;
-            } else {
-              qrStatus.textContent = `QR skapad fran ${provRows.length} flikar (${qrCsvBytes} bytes). Datum lagras som dagar sedan 1970.`;
-            }
-
-            const qrFrame = document.createElement("div");
-            qrFrame.className = "qr-code-frame";
-            qrWrap.appendChild(qrFrame);
-
-            new window.QRCode(qrFrame, {
-              text: qrCsv,
-              width: 210,
-              height: 210,
-              correctLevel: window.QRCode.CorrectLevel.M
-            });
-
-            const flowLetter = ["A", "B", "C", "D"].includes(activeFlow) ? activeFlow : "A";
-            const letterOverlay = document.createElement("span");
-            letterOverlay.className = "qr-flow-letter";
-            letterOverlay.textContent = flowLetter;
-            letterOverlay.setAttribute("aria-label", `QR-kod för flik ${flowLetter}`);
-            qrFrame.appendChild(letterOverlay);
-          } catch (_err) {
-            qrWrap.innerHTML = '<div class="mono">Kunde inte skapa QR-kod for nuvarande data.</div>';
-            qrStatus.textContent = "Fel vid QR-generering.";
-          }
         });
       }
 
@@ -5393,43 +5388,6 @@
     initFlowMenu();
     updateViewModeButtons();
     refreshLayerForView(true);
-  </script>
-  <script>
-    // Simple handlers for the QR koD panel
-    (function () {
-      const genBtn = document.getElementById('qr-generate');
-      const img = document.getElementById('qr-image');
-      const frame = document.getElementById('qr-image-frame');
-      const letter = document.getElementById('qr-image-letter');
-      const infoP = document.querySelector('#qr-content p');
-      const closeBtn = document.getElementById('qr-close');
-
-      if (genBtn) {
-        genBtn.addEventListener('click', () => {
-          const url = window.location.href;
-          const api = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url);
-          if (img) {
-            img.src = api;
-          }
-          if (frame) {
-            frame.hidden = false;
-          }
-          if (letter) {
-            const flowLetter = ['A', 'B', 'C', 'D'].includes(activeFlow) ? activeFlow : 'A';
-            letter.textContent = flowLetter;
-            letter.setAttribute('aria-label', `QR-kod för flik ${flowLetter}`);
-          }
-          if (infoP) infoP.style.display = 'none';
-        });
-      }
-
-      if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-          const panel = document.getElementById('qr-panel');
-          if (panel) panel.style.display = 'none';
-        });
-      }
-    })();
   </script>
 </body>
 </html>
