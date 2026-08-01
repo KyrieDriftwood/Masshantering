@@ -14,3 +14,15 @@ Thumbs.db
 
 # Optional local scratch files
 *.bak
+
+# Local source/build geodata (deploy generated web shards instead)
+berggrund50k-250k/*.gpkg
+webdata/geology/geologisk_enhet_yta.fgb
+webdata/geology/geologisk_enhet_yta.pmtiles
+webdata/geology/*.mbtiles
+webdata/geology/*.temp.db
+webdata/geology/_work/
+webdata/bergkvalitet/*.gpkg
+bergkvalitet/bergkvalitet-beskrivning.pdf
+backup-gpkg-cleanup-*/
+%USERPROFILE%/

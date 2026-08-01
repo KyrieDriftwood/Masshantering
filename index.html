@@ -7,6 +7,8 @@
 
   <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="https://unpkg.com/cesium@1.143/Build/Cesium/Widgets/widgets.css">
+  <script>window.CESIUM_BASE_URL = "https://unpkg.com/cesium@1.143/Build/Cesium/";</script>
 
   <style>
     :root {
@@ -34,6 +36,29 @@
       position: fixed;
       inset: 0;
       z-index: 1;
+    }
+
+    #cesium-shell {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: none;
+      background: #10181f;
+    }
+
+    #cesiumContainer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    body.cesium-mode #map {
+      display: none;
+    }
+
+    body.cesium-mode #cesium-shell {
+      display: block;
     }
 
     .topbar {
@@ -72,6 +97,37 @@
       background: #005f73;
       color: #ffffff;
       border-color: #004f60;
+    }
+
+    .view-switch {
+      display: inline-flex;
+      align-items: stretch;
+      gap: 0.25rem;
+      padding-left: 0.1rem;
+      margin-left: 0.15rem;
+      border-left: 1px solid rgba(95, 112, 116, 0.28);
+    }
+
+    .view-btn {
+      min-width: 4rem;
+      padding: 0.42rem 0.55rem;
+    }
+
+    .view-btn .flow-tag {
+      letter-spacing: 0.03em;
+    }
+
+    .cube-icon {
+      display: inline-block;
+      width: 0.78rem;
+      height: 0.78rem;
+      margin-left: 0.3rem;
+      vertical-align: -0.08rem;
+      border: 1.8px solid currentColor;
+      border-radius: 0.12rem;
+      box-shadow: -0.16rem 0.16rem 0 0 currentColor;
+      transform: skew(-10deg, -10deg);
+      opacity: 0.92;
     }
 
     .flow-tag {
@@ -114,6 +170,14 @@
       left: 1rem;
       top: 4.2rem;
       width: min(30rem, calc(100vw - 2rem));
+    }
+    /* Right-side QR panel */
+    .overlay-right {
+      position: fixed;
+      z-index: 1100;
+      right: 1rem;
+      top: 1rem;
+      width: min(12rem, calc(100vw - 2rem));
     }
 
     .floating-window {
@@ -746,6 +810,9 @@
 <body>
   <main>
     <div id="map" aria-label="Karta"></div>
+    <section id="cesium-shell" aria-label="3D karta" hidden>
+      <div id="cesiumContainer"></div>
+    </section>
 
     <nav class="topbar" aria-label="Projektfloden">
       <button class="flow-btn active" data-flow="A" type="button">A<span class="flow-tag">Forprojektering</span></button>
@@ -753,6 +820,11 @@
       <button class="flow-btn" data-flow="C" type="button">C<span class="flow-tag">Utforande</span></button>
       <button class="flow-btn" data-flow="D" type="button">D<span class="flow-tag">Materialbehandling</span></button>
       <button class="flow-btn" data-flow="E" type="button">E<span class="flow-tag">Atervinning</span></button>
+      <button class="flow-btn" id="toggle-height-layer" type="button">H<span class="flow-tag">Hojdmodell</span></button>
+      <div class="view-switch" role="group" aria-label="2D eller 3D vy">
+        <button class="flow-btn view-btn active" id="set-view-2d" type="button">2D<span class="flow-tag">Leaflet</span></button>
+        <button class="flow-btn view-btn" id="set-view-3d" type="button">3D<span class="flow-tag">Cesium<span class="cube-icon" aria-hidden="true"></span></span></button>
+      </div>
     </nav>
 
     <section class="workspace-ui" aria-live="polite">
@@ -785,6 +857,19 @@
               <div style="margin-bottom:0.25rem;"><strong>Bergkvalitet</strong></div>
               <div id="bergkvalitet-info" class="mono">Klicka pa en geologisk yta for att kontrollera provresultat.</div>
             </div>
+          </div>
+        </section>
+      </aside>
+      <aside class="overlay-right" aria-live="polite">
+        <section class="panel p-2 text-center" id="qr-panel">
+          <div class="d-flex justify-content-between align-items-start">
+            <h2 class="h6 mb-1">QR koD</h2>
+            <button id="qr-close" type="button" class="btn-close" aria-label="Stäng" title="Stäng" style="border:0;background:transparent;padding:0"></button>
+          </div>
+          <div id="qr-content" class="mt-2">
+            <p class="small text-muted mb-2">QR-kod visas här.</p>
+            <img id="qr-image" src="" alt="QR kod" style="max-width:100%;height:auto;display:none;border-radius:6px;box-shadow:0 6px 14px rgba(0,0,0,0.08)">
+            <button id="qr-generate" class="btn btn-sm btn-outline-primary mt-2">Generera exempel</button>
           </div>
         </section>
       </aside>
@@ -1028,8 +1113,14 @@
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.vectorgrid@1.3.0/dist/Leaflet.VectorGrid.bundled.js"></script>
+  <script src="https://unpkg.com/pmtiles@3.2.1/dist/pmtiles.js"></script>
+  <script src="https://unpkg.com/protomaps-leaflet@4.1.0/dist/protomaps-leaflet.js"></script>
+  <script src="https://unpkg.com/flatgeobuf@3.22.0/dist/flatgeobuf-geojson.min.js"></script>
+  <script src="https://unpkg.com/cesium@1.143/Build/Cesium/Cesium.js"></script>
+  <script src="https://unpkg.com/georaster"></script>
+  <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/proj4@2.12.1/dist/proj4.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@4.2.8/dist/geopackage.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="src/prov-core.js"></script>
@@ -1037,15 +1128,41 @@
   <script src="src/qr-merge.js"></script>
 
   <script>
-    const qlrPath = "berggrund50k-250k/berggrund50k_250k.qlr";
+    const pmtilesSources = {
+      litotektonisk: {
+        path: "webdata/geology/litotektonisk_enhet_coarse.pmtiles",
+        dataLayer: "litotektonisk_enhet",
+        maxDataZoom: 6,
+        status: "Litotektonisk enhet via PMTiles (LOD 1)."
+      },
+      geologisk: {
+        path: "webdata/geology/geologisk_enhet_yta_3857.pmtiles",
+        dataLayer: "geologisk_enhet_yta",
+        maxDataZoom: 7,
+        status: "Geologisk enhet via PMTiles-reserv."
+      }
+    };
+    const geologyShardManifestPath = "webdata/geology/geologisk_enhet_yta_shards/manifest.json";
+    const vectorTilePathTemplate = "webdata/geology/geologisk_enhet_yta_mvt/{z}/{x}/{y}.pbf";
+    const vectorTileLayerName = "geologisk_enhet_yta";
+    const coarseVectorTilePathTemplate = "webdata/geology/litotektonisk_enhet_mvt/{z}/{x}/{y}.pbf";
+    const coarseVectorTileLayerName = "litotektonisk_enhet";
+    const coarseVectorMaxZoom = 6;
+    const vectorTileMetadataPath = "webdata/geology/geologisk_enhet_yta.metadata.json";
+    const heightStacCatalogUrl = "https://api.lantmateriet.se/stac-hojd/v1";
+    const heightStacCollectionId = "dtm-cog";
+    const geopackageScriptUrl = "https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@4.2.8/dist/geopackage.min.js";
+    const geopackageSqlWasmUrl = "https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@4.2.8/dist/sql-wasm.wasm";
     const gpkgManifestPath = "berggrund50k-250k/berggrund50k_250k_parts/berggrund50k_250k.gpkg.manifest.json";
     const tableName = "geologisk_enhet_yta";
-    const bergkvalitetGpkgManifestPath = "bergkvalitet/bergkvalitet_parts/bergkvalitet.gpkg.manifest.json";
+    const bergkvalitetGpkgManifestPath = "webdata/bergkvalitet/bergkvalitet_parts/bergkvalitet.gpkg.manifest.json";
     const bergkvalitetTableName = "bergkvalitet_vag";
     const rawRepoBase = "https://raw.githubusercontent.com/KyrieDriftwood/Masshantering/main/";
     const chunkFetchConcurrency = 4;
     const maxFeatures = 32000;
     const maxBergkvalitetPoints = 3500;
+    const maxHeightSearchCacheEntries = 12;
+    const heightSearchCacheTtlMs = 120000;
     const queryPaddingFactor = 0.22;
     const preloadHalfSizeMeters = 14000;
 
@@ -1173,7 +1290,7 @@
 
       for (const providerUrl of providers) {
         try {
-          const response = await fetch(providerUrl, { cache: "no-store" });
+          const response = await fetch(providerUrl, { cache: "default" });
           if (!response.ok) {
             continue;
           }
@@ -1295,6 +1412,121 @@
       clickMarker.setIcon(icon);
     }
 
+    function updateViewModeButtons() {
+      if (view2dButtonEl) {
+        view2dButtonEl.classList.toggle("active", activeViewMode === "2d");
+      }
+      if (view3dButtonEl) {
+        view3dButtonEl.classList.toggle("active", activeViewMode === "3d");
+      }
+    }
+
+    async function createCesiumViewer() {
+      if (!window.Cesium) {
+        setStatus("Cesium saknas i sidan. Kan inte starta 3D-lagret.");
+        return null;
+      }
+
+      if (cesiumViewer) {
+        return cesiumViewer;
+      }
+
+      if (window.CESIUM_ION_DEFAULT_ACCESS_TOKEN && window.Cesium.Ion) {
+        window.Cesium.Ion.defaultAccessToken = window.CESIUM_ION_DEFAULT_ACCESS_TOKEN;
+      }
+
+      let terrainProvider = new window.Cesium.EllipsoidTerrainProvider();
+      if (window.Cesium.createWorldTerrainAsync) {
+        try {
+          terrainProvider = await window.Cesium.createWorldTerrainAsync({
+            requestVertexNormals: true,
+            requestWaterMask: true
+          });
+        } catch (_err) {
+          terrainProvider = new window.Cesium.EllipsoidTerrainProvider();
+        }
+      }
+
+      cesiumViewer = new window.Cesium.Viewer("cesiumContainer", {
+        terrainProvider,
+        imageryProvider: new window.Cesium.OpenStreetMapImageryProvider({
+          url: "https://tile.openstreetmap.org/"
+        }),
+        baseLayerPicker: false,
+        geocoder: false,
+        homeButton: false,
+        infoBox: false,
+        sceneModePicker: false,
+        selectionIndicator: false,
+        timeline: false,
+        animation: false,
+        navigationHelpButton: false,
+        fullscreenButton: false,
+        shouldAnimate: false,
+        requestRenderMode: true,
+        scene3DOnly: true
+      });
+
+      cesiumViewer.scene.globe.depthTestAgainstTerrain = true;
+      cesiumViewer.scene.globe.enableLighting = true;
+
+      return cesiumViewer;
+    }
+
+    async function setViewMode(mode) {
+      const nextMode = mode === "3d" ? "3d" : "2d";
+      if (nextMode === activeViewMode) {
+        return;
+      }
+
+      activeViewMode = nextMode;
+      document.body.classList.toggle("cesium-mode", nextMode === "3d");
+      updateViewModeButtons();
+
+      if (nextMode === "3d") {
+        if (cesiumShellEl) {
+          cesiumShellEl.hidden = false;
+        }
+        map.getContainer().style.display = "none";
+
+        const viewer = await createCesiumViewer();
+        if (!viewer) {
+          activeViewMode = "2d";
+          updateViewModeButtons();
+          map.getContainer().style.display = "";
+          if (cesiumShellEl) {
+            cesiumShellEl.hidden = true;
+          }
+          return;
+        }
+
+        const lon = Number(startView.center[1]);
+        const lat = Number(startView.center[0]);
+        viewer.resize();
+        viewer.scene.requestRender();
+        viewer.camera.flyTo({
+          destination: window.Cesium.Cartesian3.fromDegrees(lon, lat, 2800000),
+          orientation: {
+            heading: 0.0,
+            pitch: -window.Cesium.Math.PI_OVER_TWO,
+            roll: 0.0
+          },
+          duration: 0.8
+        });
+
+        setStatus("3D Cesium aktivt. World terrain används om du har token, annars en enkel glob.");
+        return;
+      }
+
+      if (cesiumShellEl) {
+        cesiumShellEl.hidden = true;
+      }
+      document.body.classList.remove("cesium-mode");
+      map.getContainer().style.display = "";
+      map.invalidateSize();
+      setStatus("2D Leaflet aktivt.");
+    }
+
     const map = L.map("map", { zoomControl: true }).setView(startView.center, startView.zoom);
     const canvasRenderer = L.canvas({ padding: 0.4 });
 
@@ -1313,16 +1545,35 @@
     const bergkvalitetInfoEl = document.getElementById("bergkvalitet-info");
     const windowBadgeEl = document.getElementById("window-badge");
     const debugWrapEl = document.getElementById("debug-wrap");
+    const cesiumShellEl = document.getElementById("cesium-shell");
+    const view2dButtonEl = document.getElementById("set-view-2d");
+    const view3dButtonEl = document.getElementById("set-view-3d");
 
     let gpkgInstance = null;
     let gpkgOpenPromise = null;
+    let geopackageLibraryPromise = null;
     let bergkvalitetGpkgInstance = null;
     let bergkvalitetGpkgOpenPromise = null;
     let activeLayer = null;
+    let activeVectorTileLayer = null;
+    let activePmtilesLayer = null;
+    let activePmtilesSource = null;
+    let activePmtilesLod = 0;
+    let activeVectorSourceMode = null;
+    let geologyShardManifest = undefined;
+    let vectorTileMetadata = null;
+    let activeViewMode = "2d";
+    let cesiumViewer = null;
+    let cesiumTerrainPromise = null;
+    let activeHeightLayer = null;
+    let activeHeightLayerItem = null;
+    let activeHeightLayerBounds = null;
+    let heightLayerLoadPromise = null;
     let bergkvalitetPointLayer = null;
     let provPointLayer = null;
     let clickMarker = null;
     let refreshToken = 0;
+    let currentLodLevel = 1;
     let activeQueryBox3006 = null;
     let activeRenderedLimit = 0;
     let activeSimplifyStep = 99;
@@ -1353,6 +1604,7 @@
     const qlrStyleBySymbolValue = new Map();
     const geoSubsetCache = new Map();
     const bqSubsetCache = new Map();
+    const heightItemSearchCache = new Map();
     const maxSubsetCacheEntries = 24;
 
     const {
@@ -1503,7 +1755,7 @@
         for (const winEl of document.querySelectorAll("[data-flow-window]")) {
           winEl.style.display = "none";
         }
-        for (const button of document.querySelectorAll(".flow-btn")) {
+        for (const button of document.querySelectorAll("[data-flow]") ) {
           button.classList.remove("active");
         }
         return;
@@ -1541,14 +1793,14 @@
         winEl.style.display = winIds.has(winEl.id) ? "block" : "none";
       }
 
-      for (const button of document.querySelectorAll(".flow-btn")) {
+      for (const button of document.querySelectorAll("[data-flow]") ) {
         const isActive = button.getAttribute("data-flow") === activeFlow;
         button.classList.toggle("active", isActive);
       }
     }
 
     function initFlowMenu() {
-      for (const button of document.querySelectorAll(".flow-btn")) {
+      for (const button of document.querySelectorAll("[data-flow]") ) {
         button.addEventListener("click", () => {
           const flowId = button.getAttribute("data-flow") || "A";
           setActiveFlow(flowId);
@@ -2556,10 +2808,16 @@
     }
 
     const LOD_BANDS = [
-      { name: "overview", level: 1, minSpanKm: 900, limit: 2600, simplify: 3, stride: 1, padding: 0.08, coarseStroke: true },
-      { name: "regional", level: 2, minSpanKm: 220, limit: 9800, simplify: 2, stride: 1, padding: 0.15, coarseStroke: false },
-      { name: "detail", level: 3, minSpanKm: 0, limit: 21000, simplify: 2, stride: 1, padding: 0.23, coarseStroke: false }
+      { name: "Litotektonik", level: 1, minSpanKm: 100, limit: 5000, simplify: 3, stride: 1, padding: 0.08, coarseStroke: true },
+      { name: "Geologisk", level: 2, minSpanKm: 10, limit: 9800, simplify: 1, stride: 1, padding: 0.15, coarseStroke: false },
+      { name: "Detalj", level: 3, minSpanKm: 0, limit: 21000, simplify: 1, stride: 1, padding: 0.23, coarseStroke: false }
     ];
+    const LOD_HYSTERESIS = {
+      overviewEnterKm: 105,
+      overviewExitKm: 95,
+      detailEnterKm: 9,
+      detailExitKm: 11
+    };
 
     const GEO_UNIT_STANDARD_FIELDS = [
       "id", "geo_enh_tx", "lito_n_tx", "tekt_n_tx", "bergart_tx", "b_roll_tx", "b_prop_tx", "farg_tx", "min_ss_tx", "kem_ss_tx", "str_tx_tx",
@@ -2579,6 +2837,415 @@
 
     function setStatus(text) {
       statusEl.textContent = text;
+    }
+
+    async function loadVectorTileMetadata() {
+      if (vectorTileMetadata) {
+        return vectorTileMetadata;
+      }
+      try {
+        const { response } = await fetchWithFallback(vectorTileMetadataPath, "vector tile metadata", { cache: "default" });
+        vectorTileMetadata = await response.json();
+      } catch (_err) {
+        vectorTileMetadata = null;
+      }
+      return vectorTileMetadata;
+    }
+
+    function removeActiveVectorTileLayer() {
+      if (activeVectorTileLayer && map.hasLayer(activeVectorTileLayer)) {
+        map.removeLayer(activeVectorTileLayer);
+      }
+      activeVectorTileLayer = null;
+
+      if (activePmtilesLayer && map.hasLayer(activePmtilesLayer)) {
+        map.removeLayer(activePmtilesLayer);
+      }
+      activePmtilesLayer = null;
+      activePmtilesSource = null;
+      activePmtilesLod = 0;
+      activeVectorSourceMode = null;
+    }
+
+    async function renderPmtiles(sourceName, lodLevel, requestToken = refreshToken) {
+      if (!window.protomapsL || !window.protomapsL.leafletLayer || !window.protomapsL.PolygonSymbolizer) {
+        return false;
+      }
+
+      const sourceConfig = pmtilesSources[sourceName];
+      if (!sourceConfig) {
+        return false;
+      }
+
+      if (activePmtilesLayer && map.hasLayer(activePmtilesLayer) && activePmtilesSource === sourceName) {
+        activePmtilesLod = lodLevel;
+        setStatus(sourceConfig.status);
+        return true;
+      }
+
+      const pmtilesCandidates = buildAssetCandidateUrls(sourceConfig.path);
+
+      const paintRules = [{
+        dataLayer: sourceConfig.dataLayer,
+        symbolizer: new window.protomapsL.PolygonSymbolizer({
+          fill: (_zoom, feature) => getFeatureFillColor({ properties: feature.props }),
+          opacity: 0.56,
+          color: "#3f4a4f",
+          width: 0.6,
+          perFeature: true
+        })
+      }];
+
+      for (const url of pmtilesCandidates) {
+        try {
+          const layer = window.protomapsL.leafletLayer({
+            url,
+            paintRules,
+            labelRules: [],
+            maxZoom: 19,
+            maxDataZoom: sourceConfig.maxDataZoom
+          });
+
+          layer.on("click", (event) => {
+            const properties = event?.feature?.props || {};
+            renderUnitInfo({ type: "Feature", properties });
+            if (event?.latlng) {
+              updateClickMarker(event.latlng);
+            }
+          });
+
+          if (requestToken !== refreshToken) {
+            return false;
+          }
+
+          const previousVectorLayer = activeVectorTileLayer;
+          layer.addTo(map);
+          activePmtilesLayer = layer;
+          activeVectorTileLayer = layer;
+          activePmtilesSource = sourceName;
+          activePmtilesLod = lodLevel;
+          activeVectorSourceMode = sourceName;
+          if (previousVectorLayer && previousVectorLayer !== layer && map.hasLayer(previousVectorLayer)) {
+            map.removeLayer(previousVectorLayer);
+          }
+          removeActiveLayer();
+
+          setStatus(sourceConfig.status);
+          return true;
+        } catch (_err) {
+          // Try next candidate URL.
+        }
+      }
+
+      return false;
+    }
+
+    async function renderVectorTiles(forceReload = false) {
+      if (!L.vectorGrid || !L.vectorGrid.protobuf) {
+        return false;
+      }
+
+      const coarseMode = map.getZoom() <= coarseVectorMaxZoom;
+      const sourceMode = coarseMode ? "coarse-litotektonisk" : "detailed-geologisk";
+
+      if (!forceReload && activeVectorTileLayer && map.hasLayer(activeVectorTileLayer) && activeVectorSourceMode === sourceMode) {
+        setStatus(coarseMode
+          ? "Litotektonisk enhet (cache) for grovutzoomning."
+          : "Geologisk enhet yta via vector tiles (cache). Drag/zoom for fler tiles.");
+        return true;
+      }
+
+      removeActiveLayer();
+      removeBergkvalitetPointLayer();
+      hideLoadProgress();
+      clearBergkvalitetInfo("Bergkvalitet laddas inte i vector tile-lage.");
+
+      if (!coarseMode) {
+        const loadedPmtiles = await renderPmtiles("geologisk", currentLodLevel);
+        if (loadedPmtiles) {
+          activeVectorSourceMode = sourceMode;
+          return true;
+        }
+      }
+
+      const metadata = await loadVectorTileMetadata();
+      const featureCount = Number(metadata?.layer?.feature_count || 0);
+
+      const chosenPathTemplate = coarseMode ? coarseVectorTilePathTemplate : vectorTilePathTemplate;
+      const chosenLayerName = coarseMode ? coarseVectorTileLayerName : vectorTileLayerName;
+      const candidateUrls = buildAssetCandidateUrls(chosenPathTemplate);
+      const tileUrl = candidateUrls[0];
+
+      removeActiveVectorTileLayer();
+
+      activeVectorTileLayer = L.vectorGrid.protobuf(tileUrl, {
+        interactive: true,
+        vectorTileLayerStyles: {
+          [chosenLayerName]: (properties) => ({
+            fill: true,
+            fillColor: getFeatureFillColor({ properties }),
+            fillOpacity: 0.54,
+            color: "#3f4a4f",
+            weight: 0.7,
+            opacity: 0.85
+          })
+        }
+      });
+
+      activeVectorTileLayer.on("click", (event) => {
+        const properties = event?.layer?.properties || {};
+        renderUnitInfo({ type: "Feature", properties });
+        if (event?.latlng) {
+          updateClickMarker(event.latlng);
+        }
+      });
+
+      activeVectorTileLayer.on("tileerror", () => {
+        setStatus("Vector tiles hittades inte for valt zoomlage. Faller tillbaka till GPKG-laddning.");
+        removeActiveVectorTileLayer();
+      });
+
+      activeVectorTileLayer.addTo(map);
+      if (typeof activeVectorTileLayer.bringToFront === "function") {
+        activeVectorTileLayer.bringToFront();
+      }
+
+      activeVectorSourceMode = sourceMode;
+
+      if (coarseMode) {
+        setStatus("Litotektonisk enhet aktiv for grovutzoomning (z0-z6). MBTiles-genererad tileset i bruk.");
+      } else {
+        setStatus(
+          featureCount > 0
+            ? `Geologisk enhet yta via vector tiles: ${featureCount} objekt tillgangliga.`
+            : "Geologisk enhet yta via vector tiles aktiverad."
+        );
+      }
+      return true;
+    }
+
+    function removeActiveHeightLayer() {
+      if (activeHeightLayer && map.hasLayer(activeHeightLayer)) {
+        map.removeLayer(activeHeightLayer);
+      }
+      activeHeightLayer = null;
+      activeHeightLayerItem = null;
+      activeHeightLayerBounds = null;
+    }
+
+    function heightItemBounds(item) {
+      const bbox = item?.bbox;
+      if (!Array.isArray(bbox) || bbox.length < 4) {
+        return null;
+      }
+
+      const west = Number(bbox[0]);
+      const south = Number(bbox[1]);
+      const east = Number(bbox[2]);
+      const north = Number(bbox[3]);
+      if (![west, south, east, north].every(Number.isFinite)) {
+        return null;
+      }
+
+      return L.latLngBounds([south, west], [north, east]);
+    }
+
+    function heightColorForValue(value, georaster) {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) {
+        return null;
+      }
+
+      const min = Number(georaster?.mins?.[0]);
+      const max = Number(georaster?.maxs?.[0]);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        return "rgba(108, 92, 66, 0.58)";
+      }
+
+      const span = Math.max(1, max - min);
+      const ratio = Math.max(0, Math.min(1, (numericValue - min) / span));
+      const hue = 110 - (ratio * 75);
+      const lightness = 78 - (ratio * 32);
+      return `hsla(${hue}, 58%, ${lightness}%, 0.62)`;
+    }
+
+    function buildHeightSearchCacheKey(searchBounds) {
+      const southWest = searchBounds.getSouthWest();
+      const northEast = searchBounds.getNorthEast();
+      return [southWest.lng, southWest.lat, northEast.lng, northEast.lat].map((value) => Number(value).toFixed(3)).join(",");
+    }
+
+    function getCachedHeightItem(cacheKey) {
+      const hit = heightItemSearchCache.get(cacheKey);
+      if (!hit) {
+        return null;
+      }
+      if ((Date.now() - hit.time) > heightSearchCacheTtlMs) {
+        heightItemSearchCache.delete(cacheKey);
+        return null;
+      }
+      return hit.item;
+    }
+
+    function setCachedHeightItem(cacheKey, item) {
+      heightItemSearchCache.set(cacheKey, {
+        item,
+        time: Date.now()
+      });
+      while (heightItemSearchCache.size > maxHeightSearchCacheEntries) {
+        const oldestKey = heightItemSearchCache.keys().next().value;
+        if (!oldestKey) {
+          break;
+        }
+        heightItemSearchCache.delete(oldestKey);
+      }
+    }
+
+    async function fetchHeightItemForBounds(bounds, allowCache = true) {
+      const searchBounds = bounds.pad(0.08);
+      const southWest = searchBounds.getSouthWest();
+      const northEast = searchBounds.getNorthEast();
+      const bbox = [southWest.lng, southWest.lat, northEast.lng, northEast.lat].join(",");
+      const searchUrl = `${heightStacCatalogUrl}/search?collections=${encodeURIComponent(heightStacCollectionId)}&bbox=${bbox}&limit=1`;
+
+      if (allowCache) {
+        const cacheKey = buildHeightSearchCacheKey(searchBounds);
+        const cached = getCachedHeightItem(cacheKey);
+        if (cached) {
+          return cached;
+        }
+      }
+
+      const response = await fetch(searchUrl, { cache: "default" });
+      if (!response.ok) {
+        throw new Error(`STAC search misslyckades (${response.status})`);
+      }
+
+      const payload = await response.json();
+      const item = Array.isArray(payload?.features) ? payload.features[0] : null;
+      if (!item) {
+        throw new Error("Hittade ingen höjdmodell för aktuell vy");
+      }
+
+      if (allowCache) {
+        const cacheKey = buildHeightSearchCacheKey(searchBounds);
+        setCachedHeightItem(cacheKey, item);
+      }
+
+      return item;
+    }
+
+    async function loadHeightLayer(forceReload = false) {
+      if (!window.GeoRasterLayer || typeof window.parseGeoraster !== "function") {
+        setStatus("Höjdmodell kan inte laddas: GeoRaster-bibliotek saknas.");
+        return false;
+      }
+
+      if (heightLayerLoadPromise) {
+        return heightLayerLoadPromise;
+      }
+
+      const currentBounds = map.getBounds();
+      if (!forceReload && activeHeightLayer && activeHeightLayerBounds && activeHeightLayerBounds.contains(currentBounds)) {
+        setStatus(`Höjdmodell aktiv: ${activeHeightLayerItem?.id || "vald ruta"}.`);
+        return true;
+      }
+
+      try {
+        heightLayerLoadPromise = (async () => {
+          setStatus("Laddar höjdmodell från STAC-hojd...");
+          setLoadProgress("Laddar höjdmodell...", 0.2);
+
+          const item = await fetchHeightItemForBounds(currentBounds, !forceReload);
+          const dataHref = item?.assets?.data?.href;
+          if (!dataHref) {
+            throw new Error("STAC-item saknar data-asset");
+          }
+
+          const rasterResponse = await fetch(dataHref, {
+            cache: "default",
+            credentials: "include",
+            mode: "cors"
+          });
+          if (!rasterResponse.ok) {
+            if (rasterResponse.status === 401 || rasterResponse.status === 403) {
+              throw new Error("Höjdmodellen kräver inloggning i Lantmäteriets nedladdningstjänst.");
+            }
+            throw new Error(`Kunde inte hämta GeoTIFF (${rasterResponse.status})`);
+          }
+
+          const rasterBuffer = await rasterResponse.arrayBuffer();
+          const georaster = await window.parseGeoraster(rasterBuffer);
+          removeActiveHeightLayer();
+
+          const layer = new window.GeoRasterLayer({
+            georaster,
+            opacity: 0.72,
+            resolution: 128,
+            pixelValuesToColorFn: (values) => heightColorForValue(values?.[0], georaster),
+            proj4: window.proj4
+          });
+
+          layer.on("load", () => {
+            setLoadProgress("Höjdmodell laddad", 1);
+          });
+
+          activeHeightLayer = layer;
+          activeHeightLayerItem = item;
+          activeHeightLayerBounds = heightItemBounds(item);
+          map.addLayer(layer);
+          if (typeof layer.bringToBack === "function") {
+            layer.bringToBack();
+          }
+
+          const boundsText = item?.id ? ` (${item.id})` : "";
+          setStatus(`Höjdmodell aktiv${boundsText}.`);
+          return true;
+        })();
+
+        return await heightLayerLoadPromise;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err || "Okänt fel");
+        removeActiveHeightLayer();
+        setStatus(`Kunde inte ladda höjdmodell: ${message}`);
+        return false;
+      } finally {
+        heightLayerLoadPromise = null;
+        hideLoadProgress();
+      }
+    }
+
+    async function toggleHeightLayer() {
+      const button = document.getElementById("toggle-height-layer");
+      const isActive = Boolean(activeHeightLayer && map.hasLayer(activeHeightLayer));
+
+      if (isActive) {
+        removeActiveHeightLayer();
+        if (button) {
+          button.textContent = "Visa höjdmodell";
+        }
+        setStatus("Höjdmodellen är avstängd.");
+        return false;
+      }
+
+      const loaded = await loadHeightLayer(true);
+      if (button && loaded) {
+        button.textContent = "Dölj höjdmodell";
+      }
+      return loaded;
+    }
+
+    async function refreshHeightLayerForView(forceReload = false) {
+      if (!activeHeightLayer && !forceReload) {
+        return false;
+      }
+
+      const button = document.getElementById("toggle-height-layer");
+      const loaded = await loadHeightLayer(forceReload);
+      if (button) {
+        button.textContent = loaded ? "Dölj höjdmodell" : "Visa höjdmodell";
+      }
+      return loaded;
     }
 
     function setLoadProgress(progressText, ratio = 0) {
@@ -2911,7 +3578,18 @@
     function getRenderProfile(win) {
       const spanKm = Math.max(win.width, win.height) / 1000;
       const zoomProgress = getZoomProgress();
-      const profile = LOD_BANDS.find((item) => spanKm >= item.minSpanKm) || LOD_BANDS[LOD_BANDS.length - 1];
+      if (currentLodLevel === 1 && spanKm < LOD_HYSTERESIS.overviewExitKm) {
+        currentLodLevel = spanKm < LOD_HYSTERESIS.detailEnterKm ? 3 : 2;
+      } else if (currentLodLevel === 2) {
+        if (spanKm >= LOD_HYSTERESIS.overviewEnterKm) {
+          currentLodLevel = 1;
+        } else if (spanKm < LOD_HYSTERESIS.detailEnterKm) {
+          currentLodLevel = 3;
+        }
+      } else if (currentLodLevel === 3 && spanKm >= LOD_HYSTERESIS.detailExitKm) {
+        currentLodLevel = spanKm >= LOD_HYSTERESIS.overviewEnterKm ? 1 : 2;
+      }
+      const profile = LOD_BANDS[currentLodLevel - 1];
 
       let limit = profile.limit;
       if (zoomProgress > 0.76 && profile.level === 3) {
@@ -3480,6 +4158,122 @@
       throw new Error(`Kunde inte lasa ${missingLabel}.` + (lastError ? ` (${String(lastError)})` : ""));
     }
 
+    async function loadGeologyShardManifest() {
+      if (geologyShardManifest !== undefined) {
+        return geologyShardManifest;
+      }
+      try {
+        const { response } = await fetchWithFallback(
+          geologyShardManifestPath,
+          "geologiskt shard-manifest",
+          { cache: "default" }
+        );
+        const manifest = await response.json();
+        geologyShardManifest = Array.isArray(manifest?.shards) ? manifest : null;
+      } catch (_err) {
+        geologyShardManifest = null;
+      }
+      return geologyShardManifest;
+    }
+
+    function bboxIntersectsArray(bbox, extent) {
+      return Array.isArray(extent)
+        && extent.length === 4
+        && bbox.minX <= extent[2]
+        && bbox.maxX >= extent[0]
+        && bbox.minY <= extent[3]
+        && bbox.maxY >= extent[1];
+    }
+
+    function bbox3006To4326(bbox) {
+      const sw = proj4("EPSG:3006", "EPSG:4326", [bbox.minX, bbox.minY]);
+      const ne = proj4("EPSG:3006", "EPSG:4326", [bbox.maxX, bbox.maxY]);
+      return {
+        minX: Math.min(sw[0], ne[0]),
+        minY: Math.min(sw[1], ne[1]),
+        maxX: Math.max(sw[0], ne[0]),
+        maxY: Math.max(sw[1], ne[1])
+      };
+    }
+
+    async function getGeologyFlatgeobufPaths(bbox) {
+      const manifest = await loadGeologyShardManifest();
+      if (!manifest) {
+        return [];
+      }
+      const basePath = geologyShardManifestPath.slice(0, geologyShardManifestPath.lastIndexOf("/") + 1);
+      return manifest.shards
+        .filter((shard) => bboxIntersectsArray(bbox, shard.bbox))
+        .map((shard) => basePath + shard.file);
+    }
+
+    async function deserializeGeologyShard(assetPath, bbox, requestToken) {
+      let lastError = null;
+      for (const url of buildAssetCandidateUrls(assetPath)) {
+        try {
+          const features = [];
+          for await (const feature of window.flatgeobuf.deserialize(url, bbox)) {
+            if (requestToken !== refreshToken) {
+              return null;
+            }
+            features.push(feature);
+          }
+          return features;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError || new Error(`Kunde inte lasa ${assetPath}.`);
+    }
+
+    async function renderGeologiskFlatgeobufForView(profile, requestToken) {
+      if (!window.flatgeobuf?.deserialize) {
+        return false;
+      }
+
+      const queryBox3006 = expandBbox(getWindowMeters(), profile.padding);
+      const queryBox4326 = bbox3006To4326(queryBox3006);
+      const assetPaths = await getGeologyFlatgeobufPaths(queryBox4326);
+      if (!assetPaths.length || requestToken !== refreshToken) {
+        return false;
+      }
+
+      const featureGroups = await Promise.all(assetPaths.map((assetPath) =>
+        deserializeGeologyShard(assetPath, queryBox4326, requestToken)
+      ));
+      if (requestToken !== refreshToken || featureGroups.some((features) => features === null)) {
+        return false;
+      }
+
+      const features = featureGroups.flat();
+      const nextLayer = L.geoJSON({ type: "FeatureCollection", features }, {
+        renderer: canvasRenderer,
+        interactive: true,
+        style: styleForFeature
+      });
+      nextLayer.eachLayer((layer) => {
+        layer.on("click", (event) => {
+          const feature = event?.target?.feature || layer.feature;
+          if (feature) {
+            renderUnitInfo(feature);
+          }
+        });
+      });
+      nextLayer.addTo(map);
+
+      const previousLayer = activeLayer;
+      activeLayer = nextLayer;
+      activeQueryBox3006 = queryBox3006;
+      activeRenderedLimit = Number.MAX_SAFE_INTEGER;
+      activeSimplifyStep = 1;
+      if (previousLayer && previousLayer !== nextLayer && map.hasLayer(previousLayer)) {
+        map.removeLayer(previousLayer);
+      }
+      removeActiveVectorTileLayer();
+      setStatus(`Geologisk enhet yta (${features.length} ytor, LOD ${profile.level}).`);
+      return true;
+    }
+
     async function fetchChunkedBinary(manifestPath, missingLabel, onProgress = null) {
       const { response: manifestResponse, url: resolvedManifestUrl } = await fetchWithFallback(
         manifestPath,
@@ -3561,6 +4355,39 @@
       return merged;
     }
 
+    async function ensureGeoPackageLibraryLoaded() {
+      if (window.GeoPackage) {
+        window.GeoPackage.setSqljsWasmLocateFile?.(() => geopackageSqlWasmUrl);
+        return;
+      }
+      if (geopackageLibraryPromise) {
+        return geopackageLibraryPromise;
+      }
+
+      geopackageLibraryPromise = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = geopackageScriptUrl;
+        script.async = true;
+        script.onload = () => {
+          if (window.GeoPackage) {
+            window.GeoPackage.setSqljsWasmLocateFile?.(() => geopackageSqlWasmUrl);
+            resolve();
+            return;
+          }
+          reject(new Error("GeoPackage-biblioteket laddades men API saknas."));
+        };
+        script.onerror = () => {
+          reject(new Error("GeoPackage-biblioteket kunde inte laddas."));
+        };
+        document.head.appendChild(script);
+      }).catch((err) => {
+        geopackageLibraryPromise = null;
+        throw err;
+      });
+
+      return geopackageLibraryPromise;
+    }
+
     async function openGeoPackage() {
       if (gpkgInstance) {
         return gpkgInstance;
@@ -3569,13 +4396,7 @@
         return gpkgOpenPromise;
       }
 
-      if (!window.GeoPackage) {
-        throw new Error("GeoPackage-biblioteket kunde inte laddas.");
-      }
-
-      if (typeof window.GeoPackage.setSqljsWasmLocateFile === "function") {
-        window.GeoPackage.setSqljsWasmLocateFile((file) => "https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@4.2.8/dist/" + file);
-      }
+      await ensureGeoPackageLibraryLoaded();
 
       gpkgOpenPromise = fetchChunkedBinary(gpkgManifestPath, "berggrund GPKG", (progress) => {
         const mbLoaded = Math.round(progress.loadedBytes / (1024 * 1024));
@@ -3840,9 +4661,7 @@
         return bergkvalitetGpkgOpenPromise;
       }
 
-      if (!window.GeoPackage) {
-        throw new Error("GeoPackage-biblioteket kunde inte laddas.");
-      }
+      await ensureGeoPackageLibraryLoaded();
 
       bergkvalitetGpkgOpenPromise = fetchChunkedBinary(bergkvalitetGpkgManifestPath, "bergkvalitet GPKG", (progress) => {
         const mbLoaded = Math.round(progress.loadedBytes / (1024 * 1024));
@@ -4018,12 +4837,70 @@
       const profile = getRenderProfile(win);
       updateWindowBadge(win);
 
+      if (profile.level === 1) {
+        removeBergkvalitetPointLayer();
+        setLoadProgress("Laddar litotektonisk oversikt...", 0.25);
+        const loaded = await renderPmtiles("litotektonisk", 1, token);
+        if (token === refreshToken) {
+          hideLoadProgress();
+          if (!loaded) {
+            setStatus("Kunde inte ladda litotektonisk oversikt.");
+          }
+        }
+        return;
+      }
+
       if (window.location.protocol === "file:") {
         removeActiveLayer();
         removeBergkvalitetPointLayer();
         hideLoadProgress();
         clearUnitInfo("Ingen geologisk enhet tillganglig i file-lage.");
-        setStatus("Kors i file-lage: kor via http:// for att kunna lasa GPKG.");
+        setStatus("Kor via http:// for att kunna lasa FlatGeobuf-shards.");
+        return;
+      }
+
+      if (profile.level === 2) {
+        removeBergkvalitetPointLayer();
+      }
+      setLoadProgress("Laddar exakt geologisk geometri...", 0.2);
+      try {
+        const loaded = await renderGeologiskFlatgeobufForView(profile, token);
+        if (token !== refreshToken) {
+          return;
+        }
+        if (!loaded) {
+          const fallbackLoaded = await renderPmtiles("geologisk", profile.level, token);
+          if (!fallbackLoaded) {
+            throw new Error("Varken shards eller PMTiles-reserv kunde laddas.");
+          }
+        }
+
+        if (profile.level === 3) {
+          const queryBox = expandBbox(win, profile.padding);
+          const bq = await openBergkvalitetGeoPackage();
+          if (token !== refreshToken) {
+            return;
+          }
+          const bqSubset = loadSubsetFromIndexedDaoForTable(
+            bq,
+            bergkvalitetTableName,
+            queryBox,
+            maxBergkvalitetPoints
+          );
+          const bqPoints = polygonCollectionToPointCollection(toWgs84Collection(bqSubset));
+          drawBergkvalitetPoints(bqPoints);
+          const elapsedMs = Math.round(performance.now() - refreshStartedAt);
+          setStatus(`Geologisk enhet yta (LOD 3). Bergkvalitet-punkter: ${bqPoints.features.length}. ${elapsedMs} ms.`);
+        }
+        hideLoadProgress();
+        return;
+      } catch (error) {
+        if (token !== refreshToken) {
+          return;
+        }
+        hideLoadProgress();
+        const message = error instanceof Error ? error.message : String(error || "Okant fel");
+        setStatus(`Kunde inte ladda geologisk enhet yta: ${message}`);
         return;
       }
 
@@ -4166,81 +5043,6 @@
       }
     }
 
-    async function loadQlrExtentHint() {
-      try {
-        const { response } = await fetchWithFallback(qlrPath, "QLR-stilfil");
-
-        const qlrText = await response.text();
-        parseQlrSymbolStylesFromText(qlrText);
-        const xml = new DOMParser().parseFromString(qlrText, "application/xml");
-        const layerNodes = [...xml.querySelectorAll("maplayer")];
-        const byExactId = layerNodes.find((node) => {
-          const idText = node.querySelector("id")?.textContent?.trim() || "";
-          return idText === "Geologisk_enhet_yta_c6a19df8_013f_4a13_92c1_e73b191fd271";
-        });
-        const byLayerName = layerNodes.find((node) => {
-          const layerName = node.querySelector("layername")?.textContent?.trim() || "";
-          return layerName === "Geologisk enhet yta";
-        });
-        const byDatasource = layerNodes.find((node) => {
-          const datasource = node.querySelector("datasource")?.textContent || "";
-          return datasource.includes("layername=geologisk_enhet_yta") && !datasource.includes("overbeteckning");
-        });
-        const mainLayerNode = byExactId || byLayerName || byDatasource || null;
-
-        if (mainLayerNode) {
-          const renderer = mainLayerNode.querySelector("renderer-v2[type='categorizedSymbol']");
-          if (renderer) {
-            const symbolColorByName = new Map();
-            const symbolNodes = [...renderer.querySelectorAll("symbols > symbol")];
-            for (const symbolNode of symbolNodes) {
-              const name = symbolNode.getAttribute("name");
-              if (!name) {
-                continue;
-              }
-              const colorOption = symbolNode.querySelector("layer[class='SimpleFill'] Option[name='color']");
-              const raw = colorOption?.getAttribute("value");
-              const rgb = parseQlrRgb(raw);
-              if (rgb) {
-                symbolColorByName.set(String(name), rgb);
-              }
-            }
-
-            qlrStyleBySymbolValue.clear();
-            const categories = [...renderer.querySelectorAll("categories > category")];
-            for (const category of categories) {
-              const symbolValue = category.getAttribute("value");
-              if (!symbolValue) {
-                continue;
-              }
-              const symbolRef = category.getAttribute("symbol") || "";
-              const label = category.getAttribute("label") || symbolValue;
-              qlrStyleBySymbolValue.set(String(symbolValue), {
-                label,
-                color: symbolColorByName.get(String(symbolRef)) || null
-              });
-            }
-          }
-        }
-
-        const extentNode = (mainLayerNode || xml).querySelector("wgs84extent");
-        if (!extentNode) {
-          return;
-        }
-
-        const xmin = Number(extentNode.querySelector("xmin")?.textContent);
-        const ymin = Number(extentNode.querySelector("ymin")?.textContent);
-        const xmax = Number(extentNode.querySelector("xmax")?.textContent);
-        const ymax = Number(extentNode.querySelector("ymax")?.textContent);
-
-        if ([xmin, ymin, xmax, ymax].some((v) => Number.isNaN(v))) {
-          return;
-        }
-      } catch (_err) {
-        // Optional hint only.
-      }
-    }
-
     map.on("click", (event) => {
       const lat = event.latlng.lat;
       const lon = event.latlng.lng;
@@ -4273,6 +5075,9 @@
 
     let refreshTimer = null;
     function scheduleRefresh() {
+      if (activeViewMode === "3d") {
+        return;
+      }
       if (refreshTimer) {
         clearTimeout(refreshTimer);
       }
@@ -4281,7 +5086,23 @@
       }, 280);
     }
 
-    map.on("moveend", scheduleRefresh);
+    let heightRefreshTimer = null;
+    function scheduleHeightRefresh() {
+      if (activeViewMode === "3d" || !activeHeightLayer) {
+        return;
+      }
+      if (heightRefreshTimer) {
+        clearTimeout(heightRefreshTimer);
+      }
+      heightRefreshTimer = setTimeout(() => {
+        refreshHeightLayerForView(false);
+      }, 280);
+    }
+
+    map.on("moveend", () => {
+      scheduleRefresh();
+      scheduleHeightRefresh();
+    });
 
     document.getElementById("reset-view").addEventListener("click", () => {
       map.setView(startView.center, startView.zoom);
@@ -4289,6 +5110,28 @@
 
     document.getElementById("reload-layer").addEventListener("click", () => {
       refreshLayerForView(true);
+      refreshHeightLayerForView(true);
+    });
+
+    document.getElementById("toggle-height-layer").addEventListener("click", () => {
+      toggleHeightLayer().catch((err) => {
+        const message = err instanceof Error ? err.message : String(err || "Okänt fel");
+        setStatus(`Kunde inte växla höjdmodell: ${message}`);
+      });
+    });
+
+    document.getElementById("set-view-2d").addEventListener("click", () => {
+      setViewMode("2d").catch((err) => {
+        const message = err instanceof Error ? err.message : String(err || "Okänt fel");
+        setStatus(`Kunde inte aktivera 2D: ${message}`);
+      });
+    });
+
+    document.getElementById("set-view-3d").addEventListener("click", () => {
+      setViewMode("3d").catch((err) => {
+        const message = err instanceof Error ? err.message : String(err || "Okänt fel");
+        setStatus(`Kunde inte aktivera 3D: ${message}`);
+      });
     });
 
     document.getElementById("toggle-debug").addEventListener("click", () => {
@@ -4304,8 +5147,36 @@
     initQrScanWindow();
     initMaterialWindow();
     initFlowMenu();
-    loadQlrExtentHint();
-    initializeStartupFromLocation();
+    updateViewModeButtons();
+    refreshLayerForView(true);
+  </script>
+  <script>
+    // Simple handlers for the QR koD panel
+    (function () {
+      const genBtn = document.getElementById('qr-generate');
+      const img = document.getElementById('qr-image');
+      const infoP = document.querySelector('#qr-content p');
+      const closeBtn = document.getElementById('qr-close');
+
+      if (genBtn) {
+        genBtn.addEventListener('click', () => {
+          const url = window.location.href;
+          const api = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url);
+          if (img) {
+            img.src = api;
+            img.style.display = 'block';
+          }
+          if (infoP) infoP.style.display = 'none';
+        });
+      }
+
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          const panel = document.getElementById('qr-panel');
+          if (panel) panel.style.display = 'none';
+        });
+      }
+    })();
   </script>
 </body>
 </html>
